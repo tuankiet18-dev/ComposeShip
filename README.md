@@ -89,6 +89,14 @@ To expose your platform to the public internet:
 4. Run `docker compose up -d`.
 5. All your deployments will now be accessible globally at `http://{service}-{project}.yourdomain.com`!
 
+## 🛠️ CI/CD (GitHub Actions)
+
+This project includes an automated CI pipeline to ensure code quality:
+*   **Frontend:** Linting and building the Next.js application.
+*   **Backend:** Restoring and building the ASP.NET Core API.
+*   **Worker:** Syntax checking the Python daemon.
+*   **Docker:** Validating compose configuration and verifying Dockerfile builds.
+
 ## 📄 License
 
 MIT License
