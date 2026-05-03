@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Standard LTS
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Lint
+        # We run lint but allow it to continue on error so it doesn't block the build immediately for minor styling issues
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Next.js
+        run: npm run build
+        env:
+          # Using a dummy CI-safe value so the Next.js build doesn't fail
+          NEXT_PUBLIC_API_URL: http://localhost:5000/api
+
+  backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend/OneClickHost.Api
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x' # Extracted from the .csproj configuration
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build ASP.NET Core
+        run: dotnet build --no-restore --configuration Release
+
+  worker:
+    name: Check Python Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./worker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Install flake8 to do a very basic syntax check
+          pip install flake8
+
+      - name: Syntax Check
+        # Stop the build if there are critical Python syntax errors or undefined names.
+        # This is a relaxed check that won't fail on formatting (like line length).
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  docker:
+    name: Validate Docker Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose Configuration
+        # Validates that docker-compose.yml has valid syntax and no missing variables
+        run: docker compose config -q
+        
+      - name: Verify Docker Builds
+        # Safely attempts to build the Docker images defined in docker-compose.yml 
+        # to ensure the Dockerfiles are valid. It does not push the images anywhere.
+        run: docker compose build

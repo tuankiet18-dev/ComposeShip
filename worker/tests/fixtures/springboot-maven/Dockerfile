@@ -1,16 +1,20 @@
 # ─────────────────────────────────────
-# Spring Boot (Gradle) Dockerfile Template
+# Spring Boot (Maven) Dockerfile Template
 # ─────────────────────────────────────
-FROM gradle:8.5-jdk21-alpine AS build
+FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 
+# Copy pom and download dependencies first (layer caching)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
 # Copy source and build
-COPY . .
-RUN if [ -f gradlew ]; then chmod +x ./gradlew && ./gradlew bootJar --no-daemon -x test; else gradle bootJar --no-daemon -x test; fi
+COPY src ./src
+RUN mvn package -DskipTests -B
 
 # Runtime
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
