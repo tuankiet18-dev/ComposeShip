@@ -1,0 +1,6 @@
+{
+  "name": "unsupported-node-app",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
