@@ -1,0 +1,12 @@
+http:
+  routers:
+    ocforumfee:
+      entryPoints:
+      - web
+      rule: Host(`fee-forum.localhost`)
+      service: ocforumfee
+  services:
+    ocforumfee:
+      loadBalancer:
+        servers:
+        - url: http://oc-forum-fee:80

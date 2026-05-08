@@ -1,102 +1,101 @@
+<p align="center">
+  <img src="assets/logo_v1.png" alt="OneClick-Host Logo" width="200"/>
+</p>
+
 # OneClick-Host 🚀
 
-> A Self-Hosted Platform as a Service (PaaS) to deploy your GitHub repositories with one click. No DevOps knowledge required.
+<p align="center">
+  <strong>A Premium Self-Hosted Platform as a Service (PaaS)</strong><br />
+  <em>Deploy your GitHub repositories with a single click. Zero DevOps, Maximum Control.</em>
+</p>
 
-OneClick-Host is a lightweight, self-hosted deployment platform designed for students and small project teams. It acts as your own private version of Vercel or Heroku. You provide a GitHub repository, and the platform automatically detects the tech stack, containerizes the application, and deploys it live with automatic dynamic routing.
+---
+
+OneClick-Host is a sophisticated, self-hosted deployment platform engineered for researchers, students, and small project teams. It serves as your private cloud infrastructure—similar to Vercel or Heroku—but entirely under your control. Simply provide a GitHub repository, and the platform handles the rest: stack detection, automated containerization, and live deployment with dynamic routing.
 
 ![Dashboard Preview](https://via.placeholder.com/800x400.png?text=OneClick-Host+Dashboard)
 
-## ✨ What It Does
+## ✨ Core Features
 
-1. **Zero-Config Deployments:** Paste a GitHub URL, and the system automatically analyzes your codebase.
-2. **Automatic Stack Detection:** Identifies frameworks (React, Next.js, ASP.NET Core, Spring Boot).
-3. **Automated Dockerization:** Generates highly optimized `Dockerfile`s on the fly if your repo doesn't have one.
-4. **Dynamic Routing:** Instantly maps your deployed application to a beautiful subdomain (e.g., `http://frontend-forum.localhost`) using Traefik.
-5. **Monorepo Support:** Deploy specific subdirectories by specifying a `Subfolder` (e.g., deploying the `client` folder of a full-stack repo).
-6. **Real-Time Logs:** Captures and displays the full Docker build logs natively in the dashboard.
+*   **⚡ Zero-Config Deployments:** Just paste your GitHub URL and watch the magic happen.
+*   **🔍 Intelligent Stack Detection:** Automatically recognizes React, Next.js, ASP.NET Core, and Spring Boot.
+*   **📦 Automated Dockerization:** Generates optimized `Dockerfile`s on the fly, adhering to production best practices.
+*   **🌐 Dynamic Routing:** Seamlessly maps apps to subdomains (e.g., `http://frontend-forum.localhost`) via Traefik.
+*   **📂 Monorepo Support:** Deploy specific subdirectories with ease—perfect for full-stack monorepos.
+*   **📊 Real-Time Logs:** Native streaming of Docker build logs directly in your dashboard.
 
-## 🏗️ Architecture
+## 🏗️ Technical Architecture
 
-The system is composed of five distinct microservices running in Docker Compose:
+The platform leverages a robust microservices architecture orchestrated via Docker Compose:
 
-| Component | Technology | Responsibility |
-|-----------|-----------|----------------|
-| **Frontend** | Next.js 15, Tailwind, shadcn/ui | The dashboard UI for managing projects, services, and viewing build logs. |
-| **API** | ASP.NET Core (.NET 10) | REST API to handle CRUD operations and queue deployment jobs. |
-| **Worker** | Python 3.12 | Background daemon that polls the database, clones GitHub repos, detects stacks, builds Docker images, and runs containers via the Docker SDK. |
-| **Database** | PostgreSQL 16 | Stores users, projects, services, environment variables, and deployment build logs. |
-| **Proxy** | Traefik v3.4 | Dynamic reverse proxy that automatically routes traffic to the dynamically spun-up user containers without port conflicts. |
+| Component | Technology Stack | Responsibility |
+|:---|:---|:---|
+| **🎨 Frontend** | Next.js 15, Tailwind, shadcn/ui | Modern, responsive dashboard for managing services and deployments. |
+| **⚙️ API** | ASP.NET Core (.NET 10) | High-performance REST API managing state and deployment queues. |
+| **🤖 Worker** | Python 3.12 | Orchestration daemon using Docker SDK for cloning, building, and running. |
+| **🗄️ Database** | PostgreSQL 16 | Reliable persistence for project configurations and build history. |
+| **🛣️ Proxy** | Traefik v3.4 | Edge router providing dynamic load balancing and subdomain management. |
 
-### The Deployment Workflow
+### The Deployment Pipeline
 
-1. User submits a GitHub URL via the Next.js Dashboard.
-2. The ASP.NET API queues a `Pending` deployment in PostgreSQL.
-3. The Python Worker picks up the job via a thread-safe poll.
-4. The Worker clones the repository into a temporary workspace.
-5. `stack_detector.py` scans for package managers (`package.json`, `pom.xml`, `.csproj`).
-6. `dockerfile_generator.py` injects a template if a Dockerfile is missing.
-7. `build_runner.py` builds the Docker image and spins up the container on the `oneclick-net` Docker network.
-8. The Worker dynamically generates a YAML routing file for Traefik.
-9. Traefik hot-reloads and routes `http://{service}-{project}.localhost` to the new container.
+1. **Submission:** User enters a GitHub URL in the Next.js Dashboard.
+2. **Queuing:** ASP.NET API validates the request and queues a `Pending` job in PostgreSQL.
+3. **Detection:** The Python Worker clones the repo and executes `stack_detector.py`.
+4. **Generation:** If no `Dockerfile` exists, `dockerfile_generator.py` injects a custom-tailored template.
+5. **Execution:** `build_runner.py` builds the image and deploys the container to the internal `oneclick-net`.
+6. **Routing:** A YAML routing configuration is generated for Traefik, enabling instant global access.
 
-## 💻 Supported Stacks (MVP)
+## 💻 Supported Ecosystems
 
-If your repository doesn't have a `Dockerfile`, OneClick-Host will automatically generate one for:
+OneClick-Host provides first-class support for the following stacks out of the box:
 
-*   **Frontend:** React (Vite/CRA), Next.js
-*   **Backend:** ASP.NET Core (.NET 10), Java Spring Boot (Maven/Gradle)
+- **Frontend:** React (Vite/CRA), Next.js
+- **Backend:** ASP.NET Core (.NET 10), Java Spring Boot (Maven/Gradle)
 
-*(Note: If you provide your own `Dockerfile` in the repository, OneClick-Host will respect it and build your custom environment!)*
+> [!TIP]
+> Have a custom environment? Just include your own `Dockerfile` in the root of your repository, and OneClick-Host will prioritize it!
 
-## 🚀 Getting Started (Local Development)
-
-To run your own private PaaS locally:
+## 🚀 Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
 - Git
 
-### Installation
+### Installation & Setup
 
-1. **Clone the repository:**
+1. **Clone the Repo:**
    ```bash
-   git clone https://github.com/yourusername/oneClick.git
+   git clone https://github.com/HienMinh58/oneClick.git
    cd oneClick
    ```
 
-2. **Start the infrastructure:**
+2. **Launch Infrastructure:**
    ```bash
    docker compose up -d --build
    ```
 
-3. **Access the services:**
-   - **Dashboard:** `http://localhost:3000`
-   - **API Swagger:** `http://localhost:5000/swagger`
-   - **Traefik Dashboard:** `http://localhost:8081`
+3. **Access Your Dashboard:**
+   - **Dashboard:** [http://localhost:3000](http://localhost:3000)
+   - **API Docs:** [http://localhost:5000/swagger](http://localhost:5000/swagger)
+   - **Traefik Hub:** [http://localhost:8081](http://localhost:8081)
 
-4. **Deploy your first app:**
-   - Register an account on the Dashboard.
-   - Create a Project.
-   - Click **Add Service**, paste a GitHub URL (e.g., a React app), and click Deploy!
-   - Watch the build logs stream in, and click your Live URL when it's done.
+## 🌍 Production Deployment
 
-## 🌍 Moving to Production (AWS / VPS)
-
-To expose your platform to the public internet:
-1. Rent an Ubuntu VPS or AWS EC2 instance.
-2. Point a Wildcard Domain (e.g., `*.yourdomain.com`) to your server's IP address.
-3. Update `TRAEFIK_DOMAIN=yourdomain.com` in your environment variables.
+Ready to go live?
+1. Deploy to an Ubuntu VPS or AWS EC2 instance.
+2. Configure a Wildcard DNS record (e.g., `*.yourdomain.com`) to your server IP.
+3. Set `TRAEFIK_DOMAIN=yourdomain.com` in your `.env`.
 4. Run `docker compose up -d`.
-5. All your deployments will now be accessible globally at `http://{service}-{project}.yourdomain.com`!
+5. Your apps are now live at `http://{service}-{project}.yourdomain.com`!
 
-## 🛠️ CI/CD (GitHub Actions)
+## 🛡️ CI/CD & Reliability
 
-This project includes an automated CI pipeline to ensure code quality:
-*   **Frontend:** Linting and building the Next.js application.
-*   **Backend:** Restoring and building the ASP.NET Core API.
-*   **Worker:** Syntax checking the Python daemon.
-*   **Docker:** Validating compose configuration and verifying Dockerfile builds.
+Our internal pipeline ensures stability across all components:
+- **Frontend/Backend:** Automated builds and linting.
+- **Worker:** Strict Python syntax validation and Docker SDK integration tests.
+- **Docker:** Infrastructure validation for complex multi-container setups.
 
 ## 📄 License
 
-MIT License
+This project is licensed under the MIT License.
+

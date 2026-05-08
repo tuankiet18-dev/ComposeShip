@@ -1,0 +1,12 @@
+http:
+  routers:
+    ocforumfeeee:
+      entryPoints:
+      - web
+      rule: Host(`feeee-forum.localhost`)
+      service: ocforumfeeee
+  services:
+    ocforumfeeee:
+      loadBalancer:
+        servers:
+        - url: http://oc-forum-feeee:80
