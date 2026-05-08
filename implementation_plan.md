@@ -64,7 +64,7 @@ Instead of introducing RabbitMQ/Redis for job queuing, the MVP uses **database p
 ## 2. Monorepo Folder Structure
 
 ```
-d:\oneClick\
+d:\oneclick-host\
 ├── README.md
 ├── docker-compose.yml                # Local development orchestration
 ├── docker-compose.prod.yml           # Production overrides (later)
@@ -418,7 +418,7 @@ DETECTION_RULES = [
 
 ### Step 1: Root Configuration
 
-#### [NEW] [README.md](file:///d:/oneClick/README.md)
+#### [NEW] [README.md](file:///d:/oneclick-host/README.md)
 Project overview, setup instructions, architecture diagram, and development workflow.
 
 #### [NEW] [docker-compose.yml](file:///d:/oneClick/docker-compose.yml)

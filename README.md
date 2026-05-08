@@ -65,8 +65,8 @@ OneClick-Host provides first-class support for the following stacks out of the b
 
 1. **Clone the Repo:**
    ```bash
-   git clone https://github.com/HienMinh58/oneClick.git
-   cd oneClick
+   git clone https://github.com/HienMinh58/oneclick-host.git
+   cd oneclick-host
    ```
 
 2. **Launch Infrastructure:**
