@@ -26,7 +26,7 @@ public class ServiceService
             .Select(s => new ServiceResponse(
                 s.Id, s.ProjectId, s.Name, s.RepoUrl, s.Branch,
                 s.Subfolder, s.ServiceType, s.DetectedStack,
-                s.Status, s.LiveUrl, s.CreatedAt, s.UpdatedAt))
+                s.NetworkAliases, s.Status, s.LiveUrl, s.CreatedAt, s.UpdatedAt))
             .ToListAsync();
     }
 
@@ -43,7 +43,8 @@ public class ServiceService
             service.Id, service.ProjectId, service.Name,
             service.RepoUrl, service.Branch, service.Subfolder,
             service.ServiceType, service.DetectedStack,
-            service.ContainerId, service.Status, service.LiveUrl,
+            service.NetworkAliases, service.ContainerId,
+            service.Status, service.LiveUrl,
             service.EnvironmentVariables.Select(ev => new EnvVarResponse(
                 ev.Id, ev.Key,
                 ev.IsSecret ? "••••••••" : ev.Value,
@@ -69,7 +70,8 @@ public class ServiceService
             RepoUrl = request.RepoUrl,
             Branch = request.Branch ?? "main",
             Subfolder = request.Subfolder,
-            ServiceType = request.ServiceType ?? "frontend"
+            ServiceType = request.ServiceType ?? "frontend",
+            NetworkAliases = request.NetworkAliases
         };
 
         _db.Services.Add(service);
@@ -79,7 +81,7 @@ public class ServiceService
             service.Id, service.ProjectId, service.Name,
             service.RepoUrl, service.Branch, service.Subfolder,
             service.ServiceType, service.DetectedStack,
-            service.Status, service.LiveUrl,
+            service.NetworkAliases, service.Status, service.LiveUrl,
             service.CreatedAt, service.UpdatedAt);
     }
 
@@ -95,6 +97,9 @@ public class ServiceService
         if (request.Branch is not null) service.Branch = request.Branch;
         if (request.Subfolder is not null) service.Subfolder = request.Subfolder;
         if (request.ServiceType is not null) service.ServiceType = request.ServiceType;
+        // Allow clearing aliases by passing empty string; null means "no change"
+        if (request.NetworkAliases is not null)
+            service.NetworkAliases = request.NetworkAliases == "" ? null : request.NetworkAliases;
 
         service.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -103,7 +108,7 @@ public class ServiceService
             service.Id, service.ProjectId, service.Name,
             service.RepoUrl, service.Branch, service.Subfolder,
             service.ServiceType, service.DetectedStack,
-            service.Status, service.LiveUrl,
+            service.NetworkAliases, service.Status, service.LiveUrl,
             service.CreatedAt, service.UpdatedAt);
     }
 
@@ -113,6 +118,24 @@ public class ServiceService
             .Include(s => s.Project)
             .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
             ?? throw new KeyNotFoundException("Service not found.");
+
+        // BUG #8 FIX: Mark as "deleting" so the Worker can cleanup the Docker container
+        // and Traefik routing file before the DB record is removed.
+        // The Worker polls for services with Status="deleting" and handles cleanup.
+        // After cleanup, the Worker (or a follow-up call) removes the DB record.
+        service.Status = "deleting";
+        service.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Called after Worker confirms the container is stopped and Traefik config is removed.
+    /// Permanently removes the service DB record.
+    /// </summary>
+    public async Task PermanentlyDeleteServiceAsync(Guid serviceId)
+    {
+        var service = await _db.Services.FindAsync(serviceId);
+        if (service is null) return; // Already deleted
 
         _db.Services.Remove(service);
         await _db.SaveChangesAsync();

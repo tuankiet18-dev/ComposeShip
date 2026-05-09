@@ -1,8 +1,66 @@
+# =============================================
+# .dockerignore — Python Worker
+# =============================================
+# Dockerfile cần:
+#   COPY requirements.txt .   →  pip install
+#   COPY . .                  →  toàn bộ source code
+
+# ── Python cache & compiled files ────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
+*.pyd
+*.pyo
+
+# ── Virtual environments ──────────────────────────────────────────────
 venv/
 .venv/
 env/
+ENV/
+.env/
+virtualenv/
+
+# ── Build artifacts ───────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# ── Worker runtime workspace (cloned repos, temp files) ───────────────
 workspace/
+/tmp/
+
+# ── Secrets & Environment ─────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Testing ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+*.test.py
+tests/
+test/
+
+# ── IDE & Editor ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Git ───────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── CI/CD & Docs ─────────────────────────────────────────────────────
+.github/
+Dockerfile*
+docker-compose*
+*.md

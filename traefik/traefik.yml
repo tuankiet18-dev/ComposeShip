@@ -1,21 +1,28 @@
 # Traefik Static Configuration
-# ─────────────────────────────────────
+# ─────────────────────
+# LOCAL DEV (Windows): Uses File provider only (Docker provider disabled)
+# AWS PRODUCTION (Linux): Uncomment the docker: provider block below
 
 api:
   dashboard: true
-  insecure: true    # Dashboard on :8080 without auth (dev only)
+  insecure: true    # ISSUE #12: Change to false on production and add a router rule with auth middleware
 
 entryPoints:
   web:
     address: ":80"
+  websecure:
+    address: ":443"
 
 providers:
-  # NOTE: Docker provider disabled on Windows Docker Desktop due to socket
-  # access issues. Enable on Linux/production servers by uncommenting below:
+  # ── PRODUCTION (Linux EC2): Uncomment this block ──────────────────────────
   # docker:
   #   endpoint: "unix:///var/run/docker.sock"
   #   exposedByDefault: false
   #   network: oneclick_oneclick-net
+  # ──────────────────────────────────────────────────────────────────────────
+
+  # ── ALWAYS ACTIVE: File Provider for user-deployed containers ─────────────
+  # Also handles API + Frontend routing on Windows dev (Docker provider off)
   file:
     directory: "/etc/traefik/dynamic"
     watch: true
@@ -23,4 +30,6 @@ providers:
 log:
   level: INFO
 
-accessLog: {}
+accessLog:
+  filePath: "/etc/traefik/access.log"
+  bufferingSize: 100

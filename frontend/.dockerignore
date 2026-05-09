@@ -1,6 +1,67 @@
+# =============================================
+# .dockerignore — Next.js Frontend
+# =============================================
+# Dockerfile dùng multi-stage build:
+#   Stage deps:    COPY package*.json      →  npm ci
+#   Stage builder: COPY --from=deps . .    →  npm run build
+#   Stage runner:  COPY --from=builder ... →  chỉ .next/standalone + .next/static + public
+
+# ── Dependencies (sẽ được tạo lại bởi npm ci) ────────────────────────
 node_modules/
+.pnp
+.pnp.js
+
+# ── Next.js build output (sẽ được tạo lại bởi npm run build) ─────────
 .next/
 out/
+
+# ── Testing ───────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+cypress/
+playwright-report/
+test-results/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# ── Secrets & Environment ─────────────────────────────────────────────
+.env
 .env.local
 .env.*.local
+.env.development
+.env.development.local
+# Note: .env.production is needed for Next.js build if used — exclude carefully
+
+# ── IDE & Editor ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Git ───────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── CI/CD & Docs ─────────────────────────────────────────────────────
+.github/
+Dockerfile*
+docker-compose*
+*.md
+AGENTS.md
+CLAUDE.md
+
+# ── Debug logs ────────────────────────────────────────────────────────
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*

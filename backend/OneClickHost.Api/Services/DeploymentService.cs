@@ -34,8 +34,11 @@ public class DeploymentService
             Version = latestVersion + 1
         };
 
-        // Update service status
-        service.Status = "deploying";
+        // BUG #1 FIX: Set service to "queued", NOT "deploying".
+        // Only the Worker should set "deploying" when it actually picks up the job.
+        // If the Worker crashes before picking up, the service would be stuck at
+        // "deploying" forever with no recovery path.
+        service.Status = "queued";
         service.UpdatedAt = DateTime.UtcNow;
 
         _db.Deployments.Add(deployment);

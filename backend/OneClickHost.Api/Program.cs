@@ -40,11 +40,18 @@ builder.Services.AddScoped<DeploymentService>();
 builder.Services.AddControllers();
 
 // ── CORS ─────────────────────────────────────────
+// ISSUE #10 FIX: Read allowed origins from config so production domain works.
+// In docker-compose: set CORS_ORIGINS=https://yourdomain.com
+// Default falls back to localhost for local dev.
+var corsOrigins = builder.Configuration["Cors:AllowedOrigins"]
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries)
+    ?? ["http://localhost:3000"];
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -65,7 +72,9 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ── Middleware Pipeline ──────────────────────────
-if (app.Environment.IsDevelopment())
+// ISSUE #11 FIX: Swagger enabled in Development AND Staging for demo,
+// but disabled in Production to avoid exposing API schema publicly.
+if (!app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI();

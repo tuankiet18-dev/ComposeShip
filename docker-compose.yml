@@ -1,3 +1,8 @@
+# BUG #6 FIX: Set a fixed project name so the Docker network is always
+# named 'oneclick_oneclick-net' regardless of the folder name.
+# This must match TRAEFIK_NETWORK in .env
+name: oneclick
+
 services:
   # ─────────────────────────────────────────────
   # PostgreSQL Database
@@ -11,7 +16,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-oneclick}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,6 +61,9 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-oneclick-host}
       Jwt__Audience: ${JWT_AUDIENCE:-oneclick-host-client}
       Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-24}
+      # ISSUE #10 FIX: ASP.NET Core maps Cors__AllowedOrigins → Cors:AllowedOrigins
+      # Set CORS_ORIGINS in .env to your production domain
+      Cors__AllowedOrigins: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "5000:5000"
     depends_on:
@@ -84,6 +92,7 @@ services:
       BUILD_TIMEOUT: ${WORKER_BUILD_TIMEOUT:-900}
       WORKSPACE_DIR: ${WORKSPACE_DIR:-/tmp/oneclick-workspace}
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-localhost}
+      TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-oneclick_oneclick-net}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - worker_workspace:/tmp/oneclick-workspace

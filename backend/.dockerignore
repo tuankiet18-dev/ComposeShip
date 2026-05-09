@@ -1,2 +1,42 @@
-bin/
-obj/
+# =============================================
+# .dockerignore — ASP.NET Core Backend
+# =============================================
+# Chỉ COPY những gì Dockerfile cần:
+#   Stage build: OneClickHost.Api/*.csproj  →  dotnet restore
+#                .  (toàn bộ src)           →  dotnet publish
+
+# ── Build artifacts (không cần, dotnet publish tạo lại) ──────────────
+**/bin/
+**/obj/
+
+# ── IDE & Editor files ────────────────────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ── Secrets & Environment ─────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+
+# ── Test projects (không deploy) ─────────────────────────────────────
+**/*.Tests/
+**/*.Test/
+**/*Tests.csproj
+
+# ── Git ───────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── CI/CD ─────────────────────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+Dockerfile*
+docker-compose*
+*.md

@@ -145,6 +145,7 @@ class ApiClient {
       branch?: string;
       subfolder?: string;
       serviceType?: string;
+      networkAliases?: string;
     }
   ) {
     return this.request(`/projects/${projectId}/services`, {

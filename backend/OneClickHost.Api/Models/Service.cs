@@ -23,6 +23,14 @@ public class Service
     [MaxLength(20)]
     public string ServiceType { get; set; } = "frontend"; // frontend | backend
 
+    /// <summary>
+    /// Comma-separated Docker network aliases for this container.
+    /// Allows other containers to reach this service by custom hostnames.
+    /// Example: "smartinvoice-backend,backend" — FE nginx.conf can use "smartinvoice-backend" as upstream.
+    /// </summary>
+    [MaxLength(500)]
+    public string? NetworkAliases { get; set; }
+
     [MaxLength(30)]
     public string? DetectedStack { get; set; } // react | nextjs | aspnet | springboot
 

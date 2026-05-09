@@ -3,6 +3,8 @@ OneClick-Host Worker — Main Entry Point
 
 Polls the database for queued deployments and processes them sequentially.
 Pipeline: Clone → Detect Stack → Generate Dockerfile → Build → Deploy
+
+Also polls for services marked "deleting" and cleans up their containers/routes.
 """
 import time
 import logging
@@ -12,14 +14,17 @@ from config import POLL_INTERVAL
 from db import (
     get_connection,
     fetch_queued_deployment,
+    fetch_deleting_services,
+    permanently_delete_service,
     update_deployment_status,
     update_service_status,
+    supersede_previous_deployments,
     get_env_vars,
 )
 from modules.repo_cloner import clone_repo, cleanup_workspace
 from modules.stack_detector import detect_stack
 from modules.dockerfile_generator import generate_dockerfile
-from modules.build_runner import build_image, run_container
+from modules.build_runner import build_image, run_container, cleanup_container
 
 # ── Logging Setup ─────────────────────────────────
 logging.basicConfig(
@@ -62,7 +67,8 @@ def process_deployment(conn, deployment: dict):
         stack = detect_stack(source_path)
         all_logs.append(f"✓ Detected stack: {stack}")
 
-        # Update service with detected stack
+        # Update service with detected stack; also sets status to "deploying" (BUG #1 FIX:
+        # Worker is the ONLY place that sets "deploying", not the API)
         update_service_status(conn, service_id, "deploying", detected_stack=stack)
 
         # ── Step 3: Generate Dockerfile ───────────
@@ -90,11 +96,19 @@ def process_deployment(conn, deployment: dict):
                                  build_logs="\n".join(all_logs))
 
         env_vars = get_env_vars(conn, service_id)
+
+        # Parse NetworkAliases from comma-separated string (e.g. "smartinvoice-backend,backend")
+        # into a list for Docker SDK. Strip whitespace and filter empty strings.
+        raw_aliases = deployment.get("NetworkAliases") or ""
+        network_aliases = [a.strip() for a in raw_aliases.split(",") if a.strip()] or None
+
         container_id, live_url = run_container(
             image_tag, container_name,
             project_name, service_name,
             env_vars=env_vars,
+            network_aliases=network_aliases,
         )
+
 
         all_logs.append(f"✓ Container running: {container_id}")
         all_logs.append(f"✓ Live URL: {live_url}")
@@ -107,7 +121,12 @@ def process_deployment(conn, deployment: dict):
                               live_url=live_url,
                               container_id=container_id)
 
+        # Mark all previous "live" deployments of this service as "superseded".
+        # Only 1 container runs at a time — the UI should clearly reflect that.
+        supersede_previous_deployments(conn, service_id, deployment_id)
+
         logger.info(f"✅ Deployment {deployment_id} succeeded → {live_url}")
+
 
     except Exception as e:
         error_msg = str(e)
@@ -117,6 +136,7 @@ def process_deployment(conn, deployment: dict):
         update_deployment_status(conn, deployment_id, "failed",
                                  error_message=error_msg,
                                  build_logs="\n".join(all_logs))
+        # BUG #2 is fixed in update_service_status — it clears LiveUrl/ContainerId on failure
         update_service_status(conn, service_id, "failed")
 
         logger.error(f"❌ Deployment {deployment_id} failed: {error_msg}")
@@ -124,6 +144,38 @@ def process_deployment(conn, deployment: dict):
     finally:
         # Clean up workspace
         cleanup_workspace(deployment_id)
+
+
+def process_deleting_services(conn):
+    """
+    BUG #8 FIX: Poll for services marked as 'deleting' and perform full cleanup:
+    1. Stop and remove the Docker container
+    2. Remove the Traefik routing YAML file
+    3. Permanently delete the DB record
+
+    This ensures containers and routes are properly cleaned up when a user
+    deletes a service from the dashboard — the API only marks Status='deleting',
+    the Worker performs the actual cleanup.
+    """
+    services = fetch_deleting_services(conn)
+    for service in services:
+        service_id = str(service["Id"])
+        project_name = service["ProjectName"]
+        service_name = service["ServiceName"]
+        container_name = f"oc-{project_name}-{service_name}".lower().replace(" ", "-")
+
+        logger.info(
+            f"🗑️  Cleaning up deleted service: {project_name}/{service_name} "
+            f"(container: {container_name})"
+        )
+
+        try:
+            cleanup_container(container_name)
+            permanently_delete_service(conn, service_id)
+            logger.info(f"✅ Service {service_id} cleaned up and removed from DB")
+        except Exception as e:
+            logger.error(f"❌ Failed to cleanup service {service_id}: {e}")
+            logger.debug(traceback.format_exc())
 
 
 def main():
@@ -134,8 +186,9 @@ def main():
     while True:
         try:
             conn = get_connection()
-            deployment = fetch_queued_deployment(conn)
 
+            # Poll for new deployments to process
+            deployment = fetch_queued_deployment(conn)
             if deployment:
                 logger.info(
                     f"📦 Processing deployment {deployment['Id']} "
@@ -144,6 +197,9 @@ def main():
                 process_deployment(conn, deployment)
             else:
                 logger.debug("No queued deployments. Sleeping...")
+
+            # BUG #8 FIX: Also poll for services waiting to be deleted
+            process_deleting_services(conn)
 
             conn.close()
 

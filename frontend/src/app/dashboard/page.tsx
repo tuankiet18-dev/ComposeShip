@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     api
@@ -46,6 +47,49 @@ export default function DashboardPage() {
           Here&apos;s an overview of your deployments
         </p>
       </div>
+
+      {/* ── Deployment Guide ──────────────── */}
+      <Card className="border-violet-500/30 bg-violet-500/5 overflow-hidden">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-lg text-violet-300">🚀 Deployment Quick Start Guide</CardTitle>
+            <CardDescription className="text-gray-400">Learn how to connect services and use Network Aliases for mono-repos.</CardDescription>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowGuide(!showGuide)}
+            className="text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+          >
+            {showGuide ? "Hide Details" : "Show Details"}
+          </Button>
+        </CardHeader>
+        {showGuide && (
+          <CardContent className="space-y-6 text-sm text-gray-300 animate-in slide-in-from-top-2 duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold">1</div>
+                <h3 className="font-semibold text-white">Deploy Backend</h3>
+                <p>When adding a Backend service, fill in the <code className="text-violet-400">Network Aliases</code> field (e.g. <code>api-server</code>). This creates a private hostname.</p>
+              </div>
+              <div className="space-y-2">
+                <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold">2</div>
+                <h3 className="font-semibold text-white">Update Frontend Config</h3>
+                <p>In your Frontend code (Nginx/Next.js), point your proxy to <code>http://api-server:8080</code>. Use the alias you defined in step 1.</p>
+              </div>
+              <div className="space-y-2">
+                <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-400 font-bold">3</div>
+                <h3 className="font-semibold text-white">Deploy Frontend</h3>
+                <p>Add your Frontend service (leave Network Aliases blank). It will now communicate with the Backend internally!</p>
+              </div>
+            </div>
+            
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-200">
+              <p><strong>💡 Pro Tip:</strong> If your project is a mono-repo, use the <code className="text-amber-400">Subfolder</code> field to specify the path to each service (e.g., <code>apps/backend</code>).</p>
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       {/* ── Quick Stats ────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
