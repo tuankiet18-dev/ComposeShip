@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,15 @@ const statusColors: Record<string, string> = {
   created: "bg-gray-500/10 text-gray-400 border-gray-500/20",
   deploying: "bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse",
   live: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  stopping: "bg-amber-500/10 text-amber-400 border-amber-500/20 animate-pulse",
   stopped: "bg-gray-500/10 text-gray-400 border-gray-500/20",
+  deleting: "bg-red-500/10 text-red-400 border-red-500/20 animate-pulse",
   failed: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
 export default function ProjectDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.id as string;
   const [project, setProject] = useState<{ id: string; name: string; description: string | null; services: { id: string; name: string; serviceType: string; detectedStack: string | null; status: string; liveUrl: string | null }[]; createdAt: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,16 +36,46 @@ export default function ProjectDetailPage() {
   const [networkAliases, setNetworkAliases] = useState("");
   const [creating, setCreating] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadProject = () => { api.getProject(projectId).then(setProject).catch(console.error).finally(() => setLoading(false)); };
   useEffect(() => { loadProject(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault(); setCreating(true);
-    try { await api.createService(projectId, { name: svcName, repoUrl, branch: branch || undefined, subfolder: subfolder || undefined, serviceType, networkAliases: networkAliases || undefined }); setSvcName(""); setRepoUrl(""); setBranch("main"); setSubfolder(""); setNetworkAliases(""); setDialogOpen(false); loadProject(); } catch (err) { console.error(err); } finally { setCreating(false); }
+    try {
+      await api.createService(projectId, {
+        name: svcName,
+        repoUrl: serviceType === "database" || serviceType === "redis" ? undefined : repoUrl,
+        branch: serviceType === "database" || serviceType === "redis" ? undefined : branch || undefined,
+        subfolder: serviceType === "database" || serviceType === "redis" ? undefined : subfolder || undefined,
+        serviceType,
+        networkAliases: networkAliases || undefined
+      });
+      setSvcName("");
+      setRepoUrl("");
+      setBranch("main");
+      setSubfolder("");
+      setNetworkAliases("");
+      setServiceType("frontend");
+      setDialogOpen(false);
+      loadProject();
+    } catch (err) { console.error(err); } finally { setCreating(false); }
   };
 
   const handleDeploy = async (serviceId: string) => { try { await api.triggerDeploy(serviceId); loadProject(); } catch (err) { console.error(err); } };
+
+  const handleDeleteProject = async () => {
+    if (!confirm("Delete this project and stop all of its services?")) return;
+    setDeleting(true);
+    try {
+      await api.deleteProject(projectId);
+      router.push("/dashboard/projects");
+    } catch (err) {
+      console.error(err);
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
   if (!project) return <div className="text-center py-20"><p className="text-muted-foreground">Project not found</p></div>;
@@ -58,23 +91,38 @@ export default function ProjectDetailPage() {
           <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
           {project.description && <p className="text-muted-foreground mt-1">{project.description}</p>}
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger className="inline-flex items-center justify-center rounded-md text-sm font-medium px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white cursor-pointer">+ Add Service</DialogTrigger>
-          <DialogContent>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleDeleteProject}
+            disabled={deleting}
+            className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          >
+            {deleting ? "Deleting..." : "Delete Project"}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger className="inline-flex items-center justify-center rounded-md text-sm font-medium px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white cursor-pointer">+ Add Service</DialogTrigger>
+            <DialogContent>
             <DialogHeader><DialogTitle>Add Service</DialogTitle><DialogDescription>Connect a GitHub repository</DialogDescription></DialogHeader>
             <form onSubmit={handleCreateService} className="space-y-4 mt-4">
-              <div className="space-y-2"><Label>Service Name</Label><Input placeholder="frontend" value={svcName} onChange={(e) => setSvcName(e.target.value)} required /></div>
-              <div className="space-y-2"><Label>GitHub Repository URL</Label><Input placeholder="https://github.com/user/repo" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Branch</Label><Input placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Subfolder</Label><Input placeholder="apps/web" value={subfolder} onChange={(e) => setSubfolder(e.target.value)} /></div>
-              </div>
-              <div className="space-y-2"><Label>Network Aliases (Optional)</Label><Input placeholder="e.g. smartinvoice-backend" value={networkAliases} onChange={(e) => setNetworkAliases(e.target.value)} /></div>
-              <div className="space-y-2"><Label>Type</Label><div className="flex gap-2">{["frontend","backend"].map(t=><Button key={t} type="button" variant={serviceType===t?"default":"outline"} size="sm" onClick={()=>setServiceType(t)} className={serviceType===t?"bg-violet-600":""}>{t}</Button>)}</div></div>
+              <div className="space-y-2"><Label>Type</Label><div className="flex gap-2">{["frontend","backend","database","redis"].map(t=><Button key={t} type="button" variant={serviceType===t?"default":"outline"} size="sm" onClick={()=>setServiceType(t)} className={serviceType===t?"bg-violet-600":""}>{t}</Button>)}</div></div>
+              <div className="space-y-2"><Label>Service Name</Label><Input placeholder={serviceType === "database" ? "smartinvoice-db" : "frontend"} value={svcName} onChange={(e) => setSvcName(e.target.value)} required /></div>
+              {serviceType !== "database" && serviceType !== "redis" && (
+                <>
+                  <div className="space-y-2"><Label>GitHub Repository URL</Label><Input placeholder="https://github.com/user/repo" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} required /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2"><Label>Branch</Label><Input placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Subfolder</Label><Input placeholder="apps/web" value={subfolder} onChange={(e) => setSubfolder(e.target.value)} /></div>
+                  </div>
+                </>
+              )}
+              <div className="space-y-2"><Label>Network Aliases (Optional)</Label><Input placeholder={serviceType === "database" ? "e.g. smartinvoice-db" : "e.g. smartinvoice-backend"} value={networkAliases} onChange={(e) => setNetworkAliases(e.target.value)} /></div>
               <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={()=>setDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={creating} className="bg-gradient-to-r from-violet-600 to-indigo-600">{creating?"Adding...":"Add Service"}</Button></div>
             </form>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Quick Deployment Guide Toggle */}

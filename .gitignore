@@ -25,6 +25,8 @@ Desktop.ini
 # =========================
 backend/**/bin/
 backend/**/obj/
+worker/**/bin/
+worker/**/obj/
 backend/**/*.user
 backend/**/*.suo
 *.nupkg

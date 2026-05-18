@@ -88,6 +88,7 @@ class ApiClient {
         id: string;
         name: string;
         description: string | null;
+        status: string;
         serviceCount: number;
         createdAt: string;
         updatedAt: string;
@@ -107,6 +108,7 @@ class ApiClient {
       id: string;
       name: string;
       description: string | null;
+      status: string;
       services: {
         id: string;
         name: string;
@@ -141,7 +143,7 @@ class ApiClient {
     projectId: string,
     data: {
       name: string;
-      repoUrl: string;
+      repoUrl?: string;
       branch?: string;
       subfolder?: string;
       serviceType?: string;
@@ -190,6 +192,10 @@ class ApiClient {
     return this.request(`/services/${id}`, { method: "DELETE" });
   }
 
+  async stopService(id: string) {
+    return this.request(`/services/${id}/stop`, { method: "POST" });
+  }
+
   // ── Deployments ──────────────────────────
   async triggerDeploy(serviceId: string) {
     return this.request(`/services/${serviceId}/deploy`, { method: "POST" });
@@ -236,7 +242,7 @@ class ApiClient {
 
   async updateEnvVars(
     serviceId: string,
-    envVars: { key: string; value: string; isSecret: boolean }[]
+    envVars: { id?: string; key: string; value: string; isSecret: boolean }[]
   ) {
     return this.request(`/services/${serviceId}/env`, {
       method: "PUT",

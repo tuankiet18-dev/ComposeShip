@@ -8,6 +8,7 @@ TEMPLATE_MAP = {
     "aspnet": "aspnet.Dockerfile",
     "springboot-maven": "springboot-maven.Dockerfile",
     "springboot-gradle": "springboot-gradle.Dockerfile",
+    "python-fastapi": "python-fastapi.Dockerfile",
     "nextjs": "nextjs.Dockerfile",
     "react": "react.Dockerfile",
 }

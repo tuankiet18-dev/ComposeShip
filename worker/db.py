@@ -20,7 +20,9 @@ def fetch_queued_deployment(conn):
         cur.execute("""
             SELECT d."Id", d."ServiceId", d."Version",
                    s."RepoUrl", s."Branch", s."Subfolder", s."Name" as "ServiceName",
+                   s."ServiceType",
                    s."NetworkAliases",
+                   p."Id" as "ProjectId",
                    p."Name" as "ProjectName"
             FROM "Deployments" d
             JOIN "Services" s ON d."ServiceId" = s."Id"
@@ -116,7 +118,7 @@ def update_service_status(conn, service_id, status, **kwargs):
     # BUG #2 FIX: When a deployment fails, clear LiveUrl and ContainerId.
     # Without this, the service still shows the URL and container ID from the
     # previous successful deployment, misleading the user into thinking it's live.
-    if status == "failed":
+    if status in ("failed", "stopped"):
         sets.append('"LiveUrl" = NULL')
         sets.append('"ContainerId" = NULL')
 
@@ -141,6 +143,23 @@ def get_env_vars(conn, service_id):
         return {row["Key"]: row["Value"] for row in cur.fetchall()}
 
 
+def fetch_live_backend_url(conn, project_id):
+    """Return a live backend URL for a project, if one exists."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT "LiveUrl"
+            FROM "Services"
+            WHERE "ProjectId" = %s
+              AND "ServiceType" = 'backend'
+              AND "LiveUrl" IS NOT NULL
+            ORDER BY "UpdatedAt" DESC
+            LIMIT 1
+        """, (project_id,))
+        row = cur.fetchone()
+    conn.commit()
+    return row["LiveUrl"] if row else None
+
+
 def fetch_deleting_services(conn):
     """
     BUG #8 SUPPORT: Fetch services marked as 'deleting' so the Worker
@@ -150,10 +169,28 @@ def fetch_deleting_services(conn):
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
             SELECT s."Id", s."ContainerId", s."Name" as "ServiceName",
+                   p."Name" as "ProjectName",
+                   ARRAY_REMOVE(ARRAY_AGG(DISTINCT d."ImageTag"), NULL) as "ImageTags"
+            FROM "Services" s
+            JOIN "Projects" p ON s."ProjectId" = p."Id"
+            LEFT JOIN "Deployments" d ON d."ServiceId" = s."Id"
+            WHERE s."Status" = 'deleting'
+            GROUP BY s."Id", s."ContainerId", s."Name", p."Name"
+        """)
+        rows = cur.fetchall()
+    conn.commit()
+    return rows
+
+
+def fetch_stopping_services(conn):
+    """Fetch services marked as 'stopping' so the Worker can stop containers."""
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT s."Id", s."ContainerId", s."Name" as "ServiceName",
                    p."Name" as "ProjectName"
             FROM "Services" s
             JOIN "Projects" p ON s."ProjectId" = p."Id"
-            WHERE s."Status" = 'deleting'
+            WHERE s."Status" = 'stopping'
         """)
         rows = cur.fetchall()
     conn.commit()
@@ -168,3 +205,18 @@ def permanently_delete_service(conn, service_id):
     with conn.cursor() as cur:
         cur.execute('DELETE FROM "Services" WHERE "Id" = %s', (service_id,))
     conn.commit()
+
+
+def delete_empty_deleting_projects(conn):
+    """Delete project rows after all child services have been cleaned up."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            DELETE FROM "Projects" p
+            WHERE p."Status" = 'deleting'
+              AND NOT EXISTS (
+                  SELECT 1 FROM "Services" s WHERE s."ProjectId" = p."Id"
+              )
+        """)
+        deleted_count = cur.rowcount
+    conn.commit()
+    return deleted_count
