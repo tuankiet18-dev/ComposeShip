@@ -11,6 +11,7 @@ public record ProjectResponse(
     Guid Id,
     string Name,
     string? Description,
+    string Status,
     int ServiceCount,
     DateTime CreatedAt,
     DateTime UpdatedAt
@@ -20,6 +21,7 @@ public record ProjectDetailResponse(
     Guid Id,
     string Name,
     string? Description,
+    string Status,
     List<ProjectServiceSummary> Services,
     DateTime CreatedAt,
     DateTime UpdatedAt

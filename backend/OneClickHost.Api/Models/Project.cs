@@ -14,6 +14,9 @@ public class Project
     [MaxLength(500)]
     public string? Description { get; set; }
 
+    [MaxLength(20)]
+    public string Status { get; set; } = "active"; // active | deleting
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

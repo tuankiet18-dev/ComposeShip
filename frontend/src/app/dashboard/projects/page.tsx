@@ -26,6 +26,7 @@ interface Project {
   id: string;
   name: string;
   description: string | null;
+  status: string;
   serviceCount: number;
   createdAt: string;
   updatedAt: string;
@@ -70,10 +71,12 @@ export default function ProjectsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this project and all its services?")) return;
     try {
+      setProjects((items) => items.filter((project) => project.id !== id));
       await api.deleteProject(id);
       loadProjects();
     } catch (err) {
       console.error(err);
+      loadProjects();
     }
   };
 

@@ -4,10 +4,10 @@ namespace OneClickHost.Api.DTOs.Services;
 
 public record CreateServiceRequest(
     [Required, MaxLength(100)] string Name,
-    [Required, MaxLength(500)] string RepoUrl,
+    [MaxLength(500)] string? RepoUrl,
     [MaxLength(100)] string? Branch,
     [MaxLength(255)] string? Subfolder,
-    [MaxLength(20)] string? ServiceType,   // frontend | backend
+    [MaxLength(20)] string? ServiceType,   // frontend | backend | database | redis
     /// <summary>Comma-separated Docker network aliases, e.g. "smartinvoice-backend,backend"</summary>
     [MaxLength(500)] string? NetworkAliases
 );
@@ -64,6 +64,7 @@ public record EnvVarResponse(
 );
 
 public record EnvVarUpdateRequest(
+    Guid? Id,
     [Required, MaxLength(255)] string Key,
     [Required, MaxLength(2000)] string Value,
     bool IsSecret

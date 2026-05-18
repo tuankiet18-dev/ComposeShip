@@ -9,7 +9,8 @@ def detect_stack(source_path: str) -> str:
     """
     Detect the technology stack of a project by examining its files.
 
-    Returns one of: 'aspnet', 'springboot-maven', 'springboot-gradle', 'nextjs', 'react'
+    Returns one of: 'aspnet', 'springboot-maven', 'springboot-gradle',
+    'python-fastapi', 'nextjs', 'react'
     Raises ValueError if no supported stack is detected.
     """
 
@@ -44,6 +45,19 @@ def detect_stack(source_path: str) -> str:
                     logger.info("Detected stack: springboot-gradle")
                     return "springboot-gradle"
 
+    # ── Python / FastAPI ─────────────────────────────────────────────
+    pyproject_path = os.path.join(source_path, "pyproject.toml")
+    requirements_path = os.path.join(source_path, "requirements.txt")
+    python_manifest = ""
+    for manifest_path in [pyproject_path, requirements_path]:
+        if os.path.exists(manifest_path):
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                python_manifest += f.read().lower()
+
+    if "fastapi" in python_manifest:
+        logger.info("Detected stack: python-fastapi")
+        return "python-fastapi"
+
     # ── Node.js projects (Next.js vs React) ───────
     pkg_path = os.path.join(source_path, "package.json")
     if os.path.exists(pkg_path):
@@ -68,5 +82,5 @@ def detect_stack(source_path: str) -> str:
 
     raise ValueError(
         f"Could not detect a supported tech stack in {source_path}. "
-        "Supported: ASP.NET Core, Spring Boot (Maven/Gradle), Next.js, React (Vite/CRA)"
+        "Supported: ASP.NET Core, Spring Boot (Maven/Gradle), Python/FastAPI, Next.js, React (Vite/CRA)"
     )

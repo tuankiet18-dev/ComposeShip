@@ -2,11 +2,15 @@ using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.Services;
 using OneClickHost.Api.Models;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace OneClickHost.Api.Services;
 
 public class ServiceService
 {
+    private const string SecretMask = "********";
+    private static readonly Regex EnvKeyRegex = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
     private readonly AppDbContext _db;
 
     public ServiceService(AppDbContext db)
@@ -47,7 +51,7 @@ public class ServiceService
             service.Status, service.LiveUrl,
             service.EnvironmentVariables.Select(ev => new EnvVarResponse(
                 ev.Id, ev.Key,
-                ev.IsSecret ? "••••••••" : ev.Value,
+                ev.IsSecret ? SecretMask : ev.Value,
                 ev.IsSecret
             )).ToList(),
             service.Deployments.Select(d => new DeploymentSummary(
@@ -63,18 +67,54 @@ public class ServiceService
         var projectExists = await _db.Projects.AnyAsync(p => p.Id == projectId && p.UserId == userId);
         if (!projectExists) throw new KeyNotFoundException("Project not found.");
 
+        var serviceType = request.ServiceType ?? "frontend";
+        if (!IsValidServiceType(serviceType))
+            throw new ArgumentException($"Invalid service type: {serviceType}");
+
+        if (serviceType is not ("database" or "redis") && string.IsNullOrWhiteSpace(request.RepoUrl))
+            throw new ArgumentException("GitHub repository URL is required for frontend and backend services.");
+
+        var serviceName = request.Name.Trim();
+        var networkAliases = request.NetworkAliases;
+        if (serviceType is "database" or "redis" && string.IsNullOrWhiteSpace(networkAliases))
+            networkAliases = ToNetworkAlias(serviceName);
+
         var service = new Service
         {
             ProjectId = projectId,
-            Name = request.Name,
-            RepoUrl = request.RepoUrl,
-            Branch = request.Branch ?? "main",
-            Subfolder = request.Subfolder,
-            ServiceType = request.ServiceType ?? "frontend",
-            NetworkAliases = request.NetworkAliases
+            Name = serviceName,
+            RepoUrl = serviceType == "database" ? "postgres:16-alpine" : serviceType == "redis" ? "redis:7-alpine" : request.RepoUrl!,
+            Branch = serviceType == "database" ? "postgres" : serviceType == "redis" ? "redis" : request.Branch ?? "main",
+            Subfolder = serviceType is "database" or "redis" ? null : request.Subfolder,
+            ServiceType = serviceType,
+            NetworkAliases = networkAliases
         };
 
         _db.Services.Add(service);
+
+        if (serviceType == "database")
+        {
+            var dbName = ToDatabaseIdentifier(serviceName);
+            service.EnvironmentVariables.Add(new EnvironmentVariable
+            {
+                Key = "POSTGRES_DB",
+                Value = dbName,
+                IsSecret = false
+            });
+            service.EnvironmentVariables.Add(new EnvironmentVariable
+            {
+                Key = "POSTGRES_USER",
+                Value = dbName,
+                IsSecret = false
+            });
+            service.EnvironmentVariables.Add(new EnvironmentVariable
+            {
+                Key = "POSTGRES_PASSWORD",
+                Value = GeneratePassword(),
+                IsSecret = true
+            });
+        }
+
         await _db.SaveChangesAsync();
 
         return new ServiceResponse(
@@ -128,6 +168,24 @@ public class ServiceService
         await _db.SaveChangesAsync();
     }
 
+    public async Task StopServiceAsync(Guid serviceId, Guid userId)
+    {
+        var service = await _db.Services
+            .Include(s => s.Project)
+            .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
+            ?? throw new KeyNotFoundException("Service not found.");
+
+        if (service.Status == "deleting")
+            throw new ArgumentException("Service is being deleted.");
+
+        if (service.Status == "stopped")
+            return;
+
+        service.Status = "stopping";
+        service.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
     /// <summary>
     /// Called after Worker confirms the container is stopped and Traefik config is removed.
     /// Permanently removes the service DB record.
@@ -149,16 +207,49 @@ public class ServiceService
             .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
             ?? throw new KeyNotFoundException("Service not found.");
 
-        // Remove old env vars and replace with new set
+        var normalizedEnvVars = envVars
+            .Select(ev => ev with { Key = ev.Key.Trim() })
+            .ToList();
+
+        var duplicateKey = normalizedEnvVars
+            .GroupBy(ev => ev.Key, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1)
+            ?.Key;
+        if (duplicateKey is not null)
+            throw new ArgumentException($"Duplicate environment variable key: {duplicateKey}");
+
+        foreach (var ev in normalizedEnvVars)
+        {
+            if (!EnvKeyRegex.IsMatch(ev.Key))
+                throw new ArgumentException($"Invalid environment variable key: {ev.Key}");
+        }
+
+        var existingById = service.EnvironmentVariables.ToDictionary(ev => ev.Id);
+        var existingByKey = service.EnvironmentVariables.ToDictionary(ev => ev.Key, StringComparer.Ordinal);
+
+        // Remove old env vars and replace with new set. Preserve existing secret
+        // values when the client sends back the masked placeholder.
         _db.EnvironmentVariables.RemoveRange(service.EnvironmentVariables);
 
-        foreach (var ev in envVars)
+        foreach (var ev in normalizedEnvVars)
         {
+            var value = ev.Value;
+            if (ev.IsSecret && IsMaskedSecretValue(value))
+            {
+                EnvironmentVariable? existing = null;
+                if (ev.Id is Guid id)
+                    existingById.TryGetValue(id, out existing);
+                existing ??= existingByKey.GetValueOrDefault(ev.Key);
+
+                if (existing is not null)
+                    value = existing.Value;
+            }
+
             _db.EnvironmentVariables.Add(new EnvironmentVariable
             {
                 ServiceId = serviceId,
                 Key = ev.Key,
-                Value = ev.Value,
+                Value = value,
                 IsSecret = ev.IsSecret
             });
         }
@@ -177,8 +268,40 @@ public class ServiceService
 
         return service.EnvironmentVariables.Select(ev => new EnvVarResponse(
             ev.Id, ev.Key,
-            ev.IsSecret ? "••••••••" : ev.Value,
+            ev.IsSecret ? SecretMask : ev.Value,
             ev.IsSecret
         )).ToList();
+    }
+
+    private static bool IsMaskedSecretValue(string value)
+    {
+        return value == SecretMask || value.Contains('•') || value.Contains("â€¢");
+    }
+
+    private static bool IsValidServiceType(string serviceType)
+    {
+        return serviceType is "frontend" or "backend" or "database" or "redis";
+    }
+
+    private static string ToDatabaseIdentifier(string value)
+    {
+        var normalized = Regex.Replace(value.ToLowerInvariant(), "[^a-z0-9_]+", "_").Trim('_');
+        if (string.IsNullOrWhiteSpace(normalized))
+            normalized = "appdb";
+        if (char.IsDigit(normalized[0]))
+            normalized = $"db_{normalized}";
+        return normalized.Length > 40 ? normalized[..40] : normalized;
+    }
+
+    private static string ToNetworkAlias(string value)
+    {
+        var normalized = Regex.Replace(value.ToLowerInvariant(), "[^a-z0-9-]+", "-").Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? "database" : normalized;
+    }
+
+    private static string GeneratePassword()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(24);
+        return Convert.ToBase64String(bytes).Replace("+", "A").Replace("/", "b").TrimEnd('=');
     }
 }
