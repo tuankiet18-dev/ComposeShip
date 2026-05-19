@@ -1,0 +1,26 @@
+# Traefik static configuration for the EC2 MVP deployment.
+# Public traffic enters on :80. The dashboard entrypoint is exposed by Compose
+# on :8081 but should remain blocked by the EC2 security group unless needed.
+
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: oneclick_oneclick-net
+
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+log:
+  level: INFO
+
+accessLog: {}

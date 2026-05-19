@@ -88,6 +88,21 @@ Ready to go live?
 4. Run `docker compose up -d`.
 5. Your apps are now live at `http://{service}-{project}.yourdomain.com`!
 
+### AWS EC2 MVP With Terraform
+
+For dev/test AWS deployment, use the EC2-only Terraform stack in [`infra/aws/dev`](infra/aws/dev). It provisions one Ubuntu EC2 instance, an Elastic IP, a security group, Docker, Traefik, the API, the frontend, the worker, and a local PostgreSQL container.
+
+No purchased domain is required for the MVP path. Leave `domain_name = ""` and the stack will use `<public-ip>.sslip.io`, for example:
+
+```text
+http://18.136.132.209.sslip.io
+```
+
+Full setup and troubleshooting guides:
+
+- [`infra/aws/dev/README.md`](infra/aws/dev/README.md)
+- [`docs/aws-terraform-infra-guide.md`](docs/aws-terraform-infra-guide.md)
+
 ## 🛡️ CI/CD & Reliability
 
 Our internal pipeline ensures stability across all components:

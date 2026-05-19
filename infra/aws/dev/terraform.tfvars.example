@@ -1,0 +1,28 @@
+aws_region   = "ap-southeast-1"
+project_name = "oneclick-host"
+
+# Leave empty to use automatic wildcard DNS via <public-ip>.sslip.io.
+# Set this only when you own a domain and have created A records for the root
+# domain and wildcard subdomain.
+domain_name = ""
+
+repository_url = "https://github.com/HienMinh58/oneclick-host.git"
+repository_ref = "main"
+
+instance_type       = "t3.medium"
+key_name            = "your-existing-ec2-keypair"
+admin_cidr_blocks   = ["203.0.113.10/32"]
+root_volume_size_gb = 60
+
+enable_traefik_dashboard_port = false
+
+postgres_db       = "oneclickhost"
+postgres_user     = "oneclick"
+postgres_password = "replace-with-a-strong-password"
+
+jwt_secret          = "replace-with-at-least-32-random-characters"
+oneclick_secret_key = "replace-with-another-32-random-character-secret"
+
+worker_build_timeout   = 900
+container_memory_limit = "256m"
+container_cpu_limit    = "0.5"

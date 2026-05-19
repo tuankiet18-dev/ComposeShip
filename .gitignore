@@ -67,6 +67,22 @@ env/
 docker-compose.override.yml
 
 # =========================
+# Terraform
+# =========================
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+*.pem
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# =========================
 # Environment Variables
 # =========================
 .env

@@ -1,0 +1,41 @@
+# EC2 deployment overrides for the MVP single-host AWS environment.
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --build
+
+services:
+  db:
+    ports: !reset []
+
+  traefik:
+    environment:
+      # Traefik's Docker provider can otherwise fall back to API 1.24 on some
+      # hosts, while modern Docker daemons require at least 1.40.
+      DOCKER_API_VERSION: "1.44"
+    ports:
+      - "80:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.ec2.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+
+  api:
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${TRAEFIK_DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`))"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.routers.api.priority=100"
+      - "traefik.http.services.api.loadbalancer.server.port=5000"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+    ports: !reset []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${TRAEFIK_DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"

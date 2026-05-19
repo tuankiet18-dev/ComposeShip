@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec > >(tee -a /var/log/oneclick-bootstrap.log) 2>&1
+export DEBIAN_FRONTEND=noninteractive
+
+DEPLOYMENT_PATH="${deployment_path}"
+REPOSITORY_URL="${repository_url}"
+REPOSITORY_REF="${repository_ref}"
+DOMAIN_NAME="${domain_name}"
+
+log() {
+  echo "[$(date --iso-8601=seconds)] $*"
+}
+
+log "Installing base packages"
+apt-get update
+apt-get install -y ca-certificates curl gnupg git openssl
+
+log "Installing Docker Engine and Compose plugin"
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+usermod -aG docker ubuntu || true
+
+log "Preparing deployment directory"
+mkdir -p "$DEPLOYMENT_PATH"
+if [ ! -d "$DEPLOYMENT_PATH/.git" ]; then
+  rm -rf "$DEPLOYMENT_PATH"
+  git clone "$REPOSITORY_URL" "$DEPLOYMENT_PATH"
+fi
+chown -R ubuntu:ubuntu "$DEPLOYMENT_PATH"
+
+cd "$DEPLOYMENT_PATH"
+sudo -u ubuntu git fetch --all --tags
+sudo -u ubuntu git checkout "$REPOSITORY_REF"
+sudo -u ubuntu git pull --ff-only origin "$REPOSITORY_REF" || true
+
+log "Writing EC2 environment file"
+cat > .env <<'ENVEOF'
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_DB=${postgres_db}
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+
+ASPNETCORE_ENVIRONMENT=Staging
+CONNECTION_STRING=Host=db;Port=5432;Database=${postgres_db};Username=${postgres_user};Password=${postgres_password}
+
+JWT_SECRET=${jwt_secret}
+JWT_ISSUER=oneclick-host
+JWT_AUDIENCE=oneclick-host-client
+JWT_EXPIRY_HOURS=24
+ONECLICK_SECRET_KEY=${oneclick_secret_key}
+
+CORS_ORIGINS=http://${domain_name}
+
+WORKER_POLL_INTERVAL=5
+WORKER_BUILD_TIMEOUT=${worker_build_timeout}
+DOCKER_HOST=unix:///var/run/docker.sock
+WORKSPACE_DIR=/tmp/oneclick-workspace
+CONTAINER_MEMORY_LIMIT=${container_memory_limit}
+CONTAINER_CPU_LIMIT=${container_cpu_limit}
+
+NEXT_PUBLIC_API_URL=http://${domain_name}/api
+
+TRAEFIK_DOMAIN=${domain_name}
+COMPOSE_PROJECT_NAME=oneclick
+TRAEFIK_NETWORK=oneclick_oneclick-net
+ENVEOF
+chown ubuntu:ubuntu .env
+chmod 0640 .env
+
+log "Writing EC2 Traefik dashboard/API routes"
+mkdir -p traefik/dynamic
+cat > traefik/dynamic/dashboard.yml <<ROUTEEOF
+http:
+  routers:
+    api-router:
+      rule: "Host(\`$DOMAIN_NAME\`) && (PathPrefix(\`/api\`) || Path(\`/health\`))"
+      service: api-service
+      entryPoints:
+        - web
+      priority: 100
+
+    frontend-router:
+      rule: "Host(\`$DOMAIN_NAME\`)"
+      service: frontend-service
+      entryPoints:
+        - web
+      priority: 1
+
+  services:
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://api:5000"
+
+    frontend-service:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+ROUTEEOF
+chown ubuntu:ubuntu traefik/dynamic/dashboard.yml
+
+log "Installing OneClick-Host systemd service"
+cat > /etc/systemd/system/oneclick-host.service <<SERVICEEOF
+[Unit]
+Description=OneClick-Host Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=$DEPLOYMENT_PATH
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --build
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.ec2.yml down
+RemainAfterExit=yes
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+
+systemctl daemon-reload
+systemctl enable oneclick-host.service
+
+log "Starting OneClick-Host"
+systemctl start oneclick-host.service
+
+log "OneClick-Host bootstrap complete"
