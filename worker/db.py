@@ -1,5 +1,6 @@
 import psycopg2
 import psycopg2.extras
+import uuid
 from config import DATABASE_URL
 
 # Register UUID adapter
@@ -95,6 +96,43 @@ def supersede_previous_deployments(conn, service_id: str, current_deployment_id:
               AND "Id" != %s
               AND "Status" = 'live'
         """, (service_id, current_deployment_id))
+    conn.commit()
+
+
+def save_deployment_diagnostic_snapshot(conn, deployment_id: str, snapshot: dict):
+    """Insert or replace the diagnostic snapshot for a failed deployment."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO "DeploymentDiagnosticSnapshots" (
+                "Id",
+                "DeploymentId",
+                "FailureStep",
+                "DetectedStack",
+                "ErrorSummary",
+                "RelevantLogExcerpt",
+                "RepositoryTree",
+                "SelectedFiles",
+                "CreatedAt"
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT ("DeploymentId") DO UPDATE SET
+                "FailureStep" = EXCLUDED."FailureStep",
+                "DetectedStack" = EXCLUDED."DetectedStack",
+                "ErrorSummary" = EXCLUDED."ErrorSummary",
+                "RelevantLogExcerpt" = EXCLUDED."RelevantLogExcerpt",
+                "RepositoryTree" = EXCLUDED."RepositoryTree",
+                "SelectedFiles" = EXCLUDED."SelectedFiles",
+                "CreatedAt" = EXCLUDED."CreatedAt"
+        """, (
+            uuid.uuid4(),
+            deployment_id,
+            snapshot.get("failure_step") or "unknown",
+            snapshot.get("detected_stack"),
+            snapshot.get("error_summary"),
+            snapshot.get("relevant_log_excerpt"),
+            psycopg2.extras.Json(snapshot.get("repository_tree") or []),
+            psycopg2.extras.Json(snapshot.get("selected_files") or {}),
+        ))
     conn.commit()
 
 

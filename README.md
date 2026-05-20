@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo_v1.png" alt="OneClick-Host Logo" width="200"/>
+  <img src="assets/logo_v2.png" alt="OneClick-Host Logo" width="200"/>
 </p>
 
 # OneClick-Host 🚀
@@ -23,6 +23,7 @@ OneClick-Host is a sophisticated, self-hosted deployment platform engineered for
 *   **🌐 Dynamic Routing:** Seamlessly maps apps to subdomains (e.g., `http://frontend-forum.localhost`) via Traefik.
 *   **📂 Monorepo Support:** Deploy specific subdirectories with ease—perfect for full-stack monorepos.
 *   **📊 Real-Time Logs:** Native streaming of Docker build logs directly in your dashboard.
+*   **🧠 AI Deployment Diagnosis:** Failed deployments capture a compact diagnostic snapshot and can be analyzed from the dashboard.
 
 ## 🏗️ Technical Architecture
 
@@ -35,6 +36,7 @@ The platform leverages a robust microservices architecture orchestrated via Dock
 | **🤖 Worker** | Python 3.12 | Orchestration daemon using Docker SDK for cloning, building, and running. |
 | **🗄️ Database** | PostgreSQL 16 | Reliable persistence for project configurations and build history. |
 | **🛣️ Proxy** | Traefik v3.4 | Edge router providing dynamic load balancing and subdomain management. |
+| **🧠 AI Diagnosis** | OpenAI Responses API | Optional one-shot analysis of failed deployment diagnostic snapshots. |
 
 ### The Deployment Pipeline
 
@@ -44,6 +46,8 @@ The platform leverages a robust microservices architecture orchestrated via Dock
 4. **Generation:** If no `Dockerfile` exists, `dockerfile_generator.py` injects a custom-tailored template.
 5. **Execution:** `build_runner.py` builds the image and deploys the container to the internal `oneclick-net`.
 6. **Routing:** A YAML routing configuration is generated for Traefik, enabling instant global access.
+
+When a deployment fails, the worker stores a diagnostic snapshot before cleanup. The snapshot includes the failed step, detected stack when available, a bounded log excerpt, a compact repository tree, and selected relevant files. The dashboard can then request a stored one-shot AI diagnosis without re-cloning the repository or re-running the deployment.
 
 ## 💻 Supported Ecosystems
 
@@ -69,15 +73,46 @@ OneClick-Host provides first-class support for the following stacks out of the b
    cd oneclick-host
    ```
 
-2. **Launch Infrastructure:**
+2. **Create Environment File:**
+   ```bash
+   cp .env.example .env
+   ```
+
+   Fill in required values in `.env`.
+
+3. **Launch Infrastructure:**
    ```bash
    docker compose up -d --build
    ```
 
-3. **Access Your Dashboard:**
+4. **Access Your Dashboard:**
    - **Dashboard:** [http://localhost:3000](http://localhost:3000)
    - **API Docs:** [http://localhost:5000/swagger](http://localhost:5000/swagger)
    - **Traefik Hub:** [http://localhost:8081](http://localhost:8081)
+
+### Optional AI Diagnosis Setup
+
+AI diagnosis is disabled until an API key is configured in `.env`:
+
+```env
+AI_PROVIDER=OpenAI
+AI_API_KEY=your_openai_api_key
+AI_MODEL=gpt-4o-mini
+```
+
+After changing `.env`, recreate the API container so the backend receives the new environment variables:
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+To verify the API container has the key without printing it:
+
+```bash
+docker exec oneclick-api sh -lc 'test -n "$AI__ApiKey" && echo configured || echo missing'
+```
+
+Never put real API keys in `.env.example`; keep secrets only in `.env` or your deployment secret manager.
 
 ## 🌍 Production Deployment
 

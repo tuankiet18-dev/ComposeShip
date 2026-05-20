@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.Deployments;
 using OneClickHost.Api.Models;
+using System.Text.Json;
 
 namespace OneClickHost.Api.Services;
 
@@ -16,6 +17,8 @@ public class DeploymentService
 
     public async Task<DeploymentResponse> TriggerDeploymentAsync(Guid serviceId, Guid userId)
     {
+        // TODO: enforce AntiAbuse:DeploymentRateLimitPerMinute with ASP.NET Core
+        // rate limiting middleware before allowing untrusted multi-user access.
         var service = await _db.Services
             .Include(s => s.Project)
             .Include(s => s.Deployments)
@@ -95,5 +98,57 @@ public class DeploymentService
             deployment.Id,
             deployment.Status,
             deployment.BuildLogs);
+    }
+
+    public async Task<DeploymentDiagnosticSnapshotResponse> GetDeploymentDiagnosticSnapshotAsync(Guid deploymentId, Guid userId)
+    {
+        var snapshot = await _db.DeploymentDiagnosticSnapshots
+            .Include(s => s.Deployment)
+                .ThenInclude(d => d.Service)
+                    .ThenInclude(s => s.Project)
+            .FirstOrDefaultAsync(s =>
+                s.DeploymentId == deploymentId &&
+                s.Deployment.Service.Project.UserId == userId)
+            ?? throw new KeyNotFoundException("Diagnostic snapshot not found.");
+
+        return new DeploymentDiagnosticSnapshotResponse(
+            snapshot.DeploymentId,
+            snapshot.FailureStep,
+            snapshot.DetectedStack,
+            snapshot.ErrorSummary,
+            snapshot.RelevantLogExcerpt,
+            ParseRepositoryTree(snapshot.RepositoryTree),
+            ParseSelectedFiles(snapshot.SelectedFiles),
+            snapshot.CreatedAt);
+    }
+
+    private static IReadOnlyList<RepositoryTreeEntryResponse> ParseRepositoryTree(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<RepositoryTreeEntryResponse>>(
+                json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseSelectedFiles(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new Dictionary<string, string>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new Dictionary<string, string>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>();
+        }
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OneClickHost.Api.Data;
@@ -11,9 +12,11 @@ using OneClickHost.Api.Data;
 namespace OneClickHost.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260520102508_AddDeploymentDiagnosticSnapshots")]
+    partial class AddDeploymentDiagnosticSnapshots
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -66,47 +69,6 @@ namespace OneClickHost.Api.Migrations
                     b.ToTable("Deployments");
                 });
 
-            modelBuilder.Entity("OneClickHost.Api.Models.DeploymentAiDiagnosis", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<Guid>("DeploymentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("DiagnosisJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("ModelName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("PromptVersion")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeploymentId")
-                        .IsUnique();
-
-                    b.ToTable("DeploymentAiDiagnoses");
-                });
-
             modelBuilder.Entity("OneClickHost.Api.Models.DeploymentDiagnosticSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -114,9 +76,8 @@ namespace OneClickHost.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
+                        .HasDefaultValueSql("NOW()")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("DeploymentId")
                         .HasColumnType("uuid");
@@ -331,17 +292,6 @@ namespace OneClickHost.Api.Migrations
                     b.Navigation("Service");
                 });
 
-            modelBuilder.Entity("OneClickHost.Api.Models.DeploymentAiDiagnosis", b =>
-                {
-                    b.HasOne("OneClickHost.Api.Models.Deployment", "Deployment")
-                        .WithOne("AiDiagnosis")
-                        .HasForeignKey("OneClickHost.Api.Models.DeploymentAiDiagnosis", "DeploymentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Deployment");
-                });
-
             modelBuilder.Entity("OneClickHost.Api.Models.DeploymentDiagnosticSnapshot", b =>
                 {
                     b.HasOne("OneClickHost.Api.Models.Deployment", "Deployment")
@@ -388,8 +338,6 @@ namespace OneClickHost.Api.Migrations
 
             modelBuilder.Entity("OneClickHost.Api.Models.Deployment", b =>
                 {
-                    b.Navigation("AiDiagnosis");
-
                     b.Navigation("DiagnosticSnapshot");
                 });
 
