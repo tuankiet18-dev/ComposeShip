@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Save, Square, Trash2 } from "lucide-react";
+import { Plus, Save, Sparkles, Square, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ const statusColors: Record<string, string> = {
 };
 
 type ServiceData = Awaited<ReturnType<typeof api.getService>>;
+type AiDiagnosisData = Awaited<ReturnType<typeof api.getAiDiagnosis>>;
 type EnvRow = { id?: string; key: string; value: string; isSecret: boolean };
 
 const SECRET_MASK = "********";
@@ -41,6 +42,10 @@ export default function ServiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<string | null>(null);
   const [logsDeploymentId, setLogsDeploymentId] = useState<string | null>(null);
+  const [aiDiagnosis, setAiDiagnosis] = useState<AiDiagnosisData | null>(null);
+  const [aiDeploymentId, setAiDeploymentId] = useState<string | null>(null);
+  const [aiLoadingId, setAiLoadingId] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [envRows, setEnvRows] = useState<EnvRow[]>([]);
   const [envSaving, setEnvSaving] = useState(false);
   const [envError, setEnvError] = useState<string | null>(null);
@@ -48,21 +53,22 @@ export default function ServiceDetailPage() {
   const [deletingProject, setDeletingProject] = useState(false);
 
   const loadService = useCallback(() => {
-    api.getService(serviceId).then(setService).catch(console.error).finally(() => setLoading(false));
+    api.getService(serviceId)
+      .then((data) => {
+        setService(data);
+        setEnvRows(data.environmentVariables.map((ev) => ({
+          id: ev.id,
+          key: ev.key,
+          value: ev.value,
+          isSecret: ev.isSecret,
+        })));
+        setEnvError(null);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [serviceId]);
 
   useEffect(() => { loadService(); }, [loadService]);
-
-  useEffect(() => {
-    if (!service) return;
-    setEnvRows(service.environmentVariables.map((ev) => ({
-      id: ev.id,
-      key: ev.key,
-      value: ev.value,
-      isSecret: ev.isSecret,
-    })));
-    setEnvError(null);
-  }, [service]);
 
   const handleDeploy = async () => {
     try { await api.triggerDeploy(serviceId); loadService(); } catch (err) { console.error(err); }
@@ -92,6 +98,24 @@ export default function ServiceDetailPage() {
       setLogs(data.buildLogs);
       setLogsDeploymentId(deploymentId);
     } catch (err) { console.error(err); }
+  };
+
+  const analyzeDeployment = async (deploymentId: string, hasAiDiagnosis: boolean) => {
+    setAiLoadingId(deploymentId);
+    setAiError(null);
+    setAiDeploymentId(deploymentId);
+    try {
+      const diagnosis = hasAiDiagnosis
+        ? await api.getAiDiagnosis(deploymentId)
+        : await api.generateAiDiagnosis(deploymentId);
+      setAiDiagnosis(diagnosis);
+      if (!hasAiDiagnosis) loadService();
+    } catch (err) {
+      setAiDiagnosis(null);
+      setAiError(err instanceof Error ? err.message : "AI diagnosis could not be loaded.");
+    } finally {
+      setAiLoadingId(null);
+    }
   };
 
   const addEnvRow = () => {
@@ -206,11 +230,95 @@ export default function ServiceDetailPage() {
                       <Badge className={statusColors[d.status] || ""}>{d.status}</Badge>
                       <span className="text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleString()}</span>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => viewLogs(d.id)}>View Logs</Button>
+                    <div className="flex items-center gap-2">
+                      {d.status === "failed" && d.hasDiagnosticSnapshot && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => analyzeDeployment(d.id, d.hasAiDiagnosis)}
+                          disabled={aiLoadingId === d.id}
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          {aiLoadingId === d.id ? "Analyzing..." : d.hasAiDiagnosis ? "View AI Diagnosis" : "Analyze with AI"}
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => viewLogs(d.id)}>View Logs</Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
+          )}
+
+          {/* AI Diagnosis Panel */}
+          {(aiDiagnosis || aiError) && (
+            <Card className="border-border/50">
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-sm">AI Diagnosis {aiDeploymentId ? `— ${aiDeploymentId.slice(0, 8)}` : ""}</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => { setAiDiagnosis(null); setAiError(null); setAiDeploymentId(null); }}>Close</Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {aiError && <p className="text-sm text-red-400">{aiError}</p>}
+                {aiDiagnosis && (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{aiDiagnosis.diagnosis.rootCauseCategory}</Badge>
+                        <Badge className={aiDiagnosis.diagnosis.confidence === "high" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : aiDiagnosis.diagnosis.confidence === "medium" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-gray-500/10 text-gray-400 border-gray-500/20"}>
+                          {aiDiagnosis.diagnosis.confidence} confidence
+                        </Badge>
+                      </div>
+                      <p className="text-sm leading-relaxed">{aiDiagnosis.diagnosis.diagnosis}</p>
+                    </div>
+
+                    {aiDiagnosis.diagnosis.isLikelyPlatformIssue && (
+                      <div className="rounded-lg border border-violet-500/20 bg-violet-500/10 p-3 text-sm text-violet-200">
+                        <p className="font-medium">Possible oneClick platform limitation</p>
+                        {aiDiagnosis.diagnosis.platformIssueReason && <p className="mt-1 text-violet-200/80">{aiDiagnosis.diagnosis.platformIssueReason}</p>}
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Evidence</h3>
+                        <ul className="space-y-1 text-sm text-muted-foreground">
+                          {aiDiagnosis.diagnosis.evidence.map((item, index) => <li key={index}>• {item}</li>)}
+                        </ul>
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Suggested fixes</h3>
+                        <ul className="space-y-1 text-sm text-muted-foreground">
+                          {aiDiagnosis.diagnosis.suggestedFixes.map((item, index) => <li key={index}>• {item}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {aiDiagnosis.diagnosis.filesToInspect.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Files to inspect</h3>
+                        <div className="space-y-2">
+                          {aiDiagnosis.diagnosis.filesToInspect.map((file) => (
+                            <div key={file.path} className="rounded-lg border border-border/50 p-3 text-sm">
+                              <p className="font-mono text-violet-300">{file.path}</p>
+                              <p className="mt-1 text-muted-foreground">{file.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {aiDiagnosis.diagnosis.missingInformation.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium">Missing information</h3>
+                        <ul className="space-y-1 text-sm text-muted-foreground">
+                          {aiDiagnosis.diagnosis.missingInformation.map((item, index) => <li key={index}>• {item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* Logs Panel */}

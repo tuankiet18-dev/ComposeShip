@@ -11,6 +11,8 @@ public class AppDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<Deployment> Deployments => Set<Deployment>();
+    public DbSet<DeploymentDiagnosticSnapshot> DeploymentDiagnosticSnapshots => Set<DeploymentDiagnosticSnapshot>();
+    public DbSet<DeploymentAiDiagnosis> DeploymentAiDiagnoses => Set<DeploymentAiDiagnosis>();
     public DbSet<EnvironmentVariable> EnvironmentVariables => Set<EnvironmentVariable>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -54,6 +56,31 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Deployment>(e =>
         {
             e.Property(d => d.BuildLogs).HasColumnType("text");
+
+            e.HasOne(d => d.DiagnosticSnapshot)
+             .WithOne(s => s.Deployment)
+             .HasForeignKey<DeploymentDiagnosticSnapshot>(s => s.DeploymentId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(d => d.AiDiagnosis)
+             .WithOne(s => s.Deployment)
+             .HasForeignKey<DeploymentAiDiagnosis>(s => s.DeploymentId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeploymentDiagnosticSnapshot>(e =>
+        {
+            e.Property(s => s.CreatedAt).HasDefaultValueSql("NOW()");
+            e.Property(s => s.RelevantLogExcerpt).HasColumnType("text");
+            e.Property(s => s.RepositoryTree).HasColumnType("jsonb");
+            e.Property(s => s.SelectedFiles).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<DeploymentAiDiagnosis>(e =>
+        {
+            e.Property(d => d.DiagnosisJson).HasColumnType("jsonb");
+            e.Property(d => d.CreatedAt).HasDefaultValueSql("NOW()");
+            e.Property(d => d.UpdatedAt).HasDefaultValueSql("NOW()");
         });
     }
 }

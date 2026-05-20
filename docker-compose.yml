@@ -63,6 +63,9 @@ services:
       Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-24}
       # ISSUE #10 FIX: ASP.NET Core maps Cors__AllowedOrigins → Cors:AllowedOrigins
       # Set CORS_ORIGINS in .env to your production domain
+      AI__Provider: ${AI_PROVIDER:-OpenAI}
+      AI__ApiKey: ${AI_API_KEY:-}
+      AI__Model: ${AI_MODEL:-gpt-4o-mini}
       Cors__AllowedOrigins: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "5000:5000"

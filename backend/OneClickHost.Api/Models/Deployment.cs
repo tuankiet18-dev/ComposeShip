@@ -31,4 +31,6 @@ public class Deployment
 
     // Navigation
     public Service Service { get; set; } = null!;
+    public DeploymentDiagnosticSnapshot? DiagnosticSnapshot { get; set; }
+    public DeploymentAiDiagnosis? AiDiagnosis { get; set; }
 }

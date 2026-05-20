@@ -182,6 +182,8 @@ class ApiClient {
         startedAt: string | null;
         completedAt: string | null;
         createdAt: string;
+        hasDiagnosticSnapshot: boolean;
+        hasAiDiagnosis: boolean;
       }[];
       createdAt: string;
       updatedAt: string;
@@ -231,6 +233,50 @@ class ApiClient {
       status: string;
       buildLogs: string | null;
     }>(`/deployments/${id}/logs`);
+  }
+
+  async getAiDiagnosis(id: string) {
+    return this.request<{
+      id: string;
+      deploymentId: string;
+      diagnosis: {
+        diagnosis: string;
+        rootCauseCategory: string;
+        confidence: "low" | "medium" | "high";
+        evidence: string[];
+        filesToInspect: { path: string; reason: string }[];
+        suggestedFixes: string[];
+        isLikelyPlatformIssue: boolean;
+        platformIssueReason: string | null;
+        missingInformation: string[];
+      };
+      modelName: string;
+      promptVersion: string;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/deployments/${id}/ai-diagnosis`);
+  }
+
+  async generateAiDiagnosis(id: string) {
+    return this.request<{
+      id: string;
+      deploymentId: string;
+      diagnosis: {
+        diagnosis: string;
+        rootCauseCategory: string;
+        confidence: "low" | "medium" | "high";
+        evidence: string[];
+        filesToInspect: { path: string; reason: string }[];
+        suggestedFixes: string[];
+        isLikelyPlatformIssue: boolean;
+        platformIssueReason: string | null;
+        missingInformation: string[];
+      };
+      modelName: string;
+      promptVersion: string;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/deployments/${id}/ai-diagnosis`, { method: "POST" });
   }
 
   // ── Environment Variables ────────────────

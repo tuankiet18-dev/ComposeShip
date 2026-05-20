@@ -40,6 +40,9 @@ public class ServiceService
             .Include(s => s.Project)
             .Include(s => s.EnvironmentVariables)
             .Include(s => s.Deployments.OrderByDescending(d => d.CreatedAt).Take(10))
+                .ThenInclude(d => d.DiagnosticSnapshot)
+            .Include(s => s.Deployments.OrderByDescending(d => d.CreatedAt).Take(10))
+                .ThenInclude(d => d.AiDiagnosis)
             .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
             ?? throw new KeyNotFoundException("Service not found.");
 
@@ -56,7 +59,9 @@ public class ServiceService
             )).ToList(),
             service.Deployments.Select(d => new DeploymentSummary(
                 d.Id, d.Status, d.Version,
-                d.StartedAt, d.CompletedAt, d.CreatedAt
+                d.StartedAt, d.CompletedAt, d.CreatedAt,
+                d.DiagnosticSnapshot is not null,
+                d.AiDiagnosis is not null
             )).ToList(),
             service.CreatedAt, service.UpdatedAt
         );

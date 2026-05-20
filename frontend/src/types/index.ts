@@ -78,6 +78,8 @@ export interface DeploymentSummary {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  hasDiagnosticSnapshot: boolean;
+  hasAiDiagnosis: boolean;
 }
 
 export interface Deployment extends DeploymentSummary {
@@ -90,6 +92,26 @@ export interface DeploymentLogs {
   deploymentId: string;
   status: string;
   buildLogs: string | null;
+}
+
+export interface DeploymentAiDiagnosis {
+  id: string;
+  deploymentId: string;
+  diagnosis: {
+    diagnosis: string;
+    rootCauseCategory: string;
+    confidence: "low" | "medium" | "high";
+    evidence: string[];
+    filesToInspect: { path: string; reason: string }[];
+    suggestedFixes: string[];
+    isLikelyPlatformIssue: boolean;
+    platformIssueReason: string | null;
+    missingInformation: string[];
+  };
+  modelName: string;
+  promptVersion: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Status types ──────────────────────────────────

@@ -58,6 +58,30 @@ CREATE TABLE IF NOT EXISTS "Deployments" (
     "CreatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Diagnostic snapshots captured by the Worker when a deployment fails.
+CREATE TABLE IF NOT EXISTS "DeploymentDiagnosticSnapshots" (
+    "Id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "DeploymentId" UUID NOT NULL UNIQUE REFERENCES "Deployments"("Id") ON DELETE CASCADE,
+    "FailureStep" VARCHAR(50) NOT NULL DEFAULT 'unknown',
+    "DetectedStack" VARCHAR(50),
+    "ErrorSummary" VARCHAR(500),
+    "RelevantLogExcerpt" TEXT,
+    "RepositoryTree" JSONB,
+    "SelectedFiles" JSONB,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- One-shot AI diagnosis generated from a deployment diagnostic snapshot.
+CREATE TABLE IF NOT EXISTS "DeploymentAiDiagnoses" (
+    "Id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "DeploymentId" UUID NOT NULL UNIQUE REFERENCES "Deployments"("Id") ON DELETE CASCADE,
+    "DiagnosisJson" JSONB NOT NULL,
+    "ModelName" VARCHAR(100) NOT NULL,
+    "PromptVersion" VARCHAR(50) NOT NULL,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    "UpdatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Environment Variables table
 CREATE TABLE IF NOT EXISTS "EnvironmentVariables" (
     "Id" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -73,4 +97,6 @@ CREATE INDEX IF NOT EXISTS idx_projects_user ON "Projects"("UserId");
 CREATE INDEX IF NOT EXISTS idx_services_project ON "Services"("ProjectId");
 CREATE INDEX IF NOT EXISTS idx_deployments_service ON "Deployments"("ServiceId");
 CREATE INDEX IF NOT EXISTS idx_deployments_status ON "Deployments"("Status");
+CREATE INDEX IF NOT EXISTS idx_diagnostic_snapshots_deployment ON "DeploymentDiagnosticSnapshots"("DeploymentId");
+CREATE INDEX IF NOT EXISTS idx_ai_diagnoses_deployment ON "DeploymentAiDiagnoses"("DeploymentId");
 CREATE INDEX IF NOT EXISTS idx_env_vars_service ON "EnvironmentVariables"("ServiceId");
