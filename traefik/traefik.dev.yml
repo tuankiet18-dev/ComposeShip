@@ -1,0 +1,23 @@
+# Development-only Traefik configuration.
+# Enables the unauthenticated dashboard on :8080 inside the container; the dev
+# compose override maps it to localhost:8081 for local inspection.
+
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+log:
+  level: INFO
+
+accessLog: {}

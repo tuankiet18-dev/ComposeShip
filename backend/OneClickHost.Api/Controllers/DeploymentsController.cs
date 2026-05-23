@@ -11,10 +11,14 @@ namespace OneClickHost.Api.Controllers;
 public class DeploymentsController : ControllerBase
 {
     private readonly DeploymentService _deploymentService;
+    private readonly IAiDeploymentDiagnosisService _aiDiagnosisService;
 
-    public DeploymentsController(DeploymentService deploymentService)
+    public DeploymentsController(
+        DeploymentService deploymentService,
+        IAiDeploymentDiagnosisService aiDiagnosisService)
     {
         _deploymentService = deploymentService;
+        _aiDiagnosisService = aiDiagnosisService;
     }
 
     [HttpPost("api/services/{serviceId:guid}/deploy")]
@@ -74,6 +78,63 @@ public class DeploymentsController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "Deployment not found." });
+        }
+    }
+
+    [HttpGet("api/deployments/{id:guid}/diagnostic-snapshot")]
+    public async Task<ActionResult<DeploymentDiagnosticSnapshotResponse>> GetDeploymentDiagnosticSnapshot(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var snapshot = await _deploymentService.GetDeploymentDiagnosticSnapshotAsync(id, userId);
+            return Ok(snapshot);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Diagnostic snapshot not found." });
+        }
+    }
+
+    [HttpGet("api/deployments/{id:guid}/ai-diagnosis")]
+    public async Task<ActionResult<DeploymentAiDiagnosisResponse>> GetAiDiagnosis(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var diagnosis = await _aiDiagnosisService.GetDiagnosisAsync(id, userId);
+            return Ok(diagnosis);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "AI diagnosis not found." });
+        }
+    }
+
+    [HttpPost("api/deployments/{id:guid}/ai-diagnosis")]
+    public async Task<ActionResult<DeploymentAiDiagnosisResponse>> GenerateAiDiagnosis(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var diagnosis = await _aiDiagnosisService.GenerateDiagnosisAsync(id, userId);
+            return Ok(diagnosis);
+        }
+        catch (KeyNotFoundException ex) when (ex.Message.Contains("snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound(new { message = "Diagnostic snapshot not found for this deployment." });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Deployment not found." });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configured", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(503, new { message = "AI diagnosis is not configured." });
+        }
+        catch (InvalidOperationException)
+        {
+            return StatusCode(502, new { message = "AI diagnosis could not be generated right now." });
         }
     }
 

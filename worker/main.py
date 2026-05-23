@@ -27,6 +27,7 @@ from db import (
     update_project_deployment_status,
     update_project_status,
     update_service_status,
+    save_deployment_diagnostic_snapshot,
     supersede_previous_deployments,
     supersede_previous_project_deployments,
     get_env_vars,
@@ -37,6 +38,7 @@ from db import (
 from modules.repo_cloner import clone_repo, cleanup_workspace
 from modules.stack_detector import detect_stack
 from modules.dockerfile_generator import generate_dockerfile
+from modules.diagnostic_collector import build_diagnostic_snapshot
 from modules.build_runner import (
     build_image,
     run_container,
@@ -185,9 +187,14 @@ def process_deployment(conn, deployment: dict):
 
     all_logs = []
     env_vars = {}
+    source_path = None
+    stack = None
+    failure_step = "unknown"
 
     try:
         if service_type == "database":
+            stack = "postgres"
+            failure_step = "container_start"
             all_logs.append("=== Provisioning PostgreSQL database service ===")
             update_deployment_status(conn, deployment_id, "deploying",
                                      image_tag="postgres:16-alpine",
@@ -223,6 +230,8 @@ def process_deployment(conn, deployment: dict):
             return
 
         if service_type == "redis":
+            stack = "redis"
+            failure_step = "container_start"
             all_logs.append("=== Provisioning Redis service ===")
             update_deployment_status(conn, deployment_id, "deploying",
                                      image_tag="redis:7-alpine",
@@ -255,11 +264,13 @@ def process_deployment(conn, deployment: dict):
             return
 
         # ── Step 1: Clone ─────────────────────────
+        failure_step = "clone_repo"
         all_logs.append(f"=== Cloning {repo_url} (branch: {branch}) ===")
         source_path = clone_repo(repo_url, branch, subfolder, deployment_id)
         all_logs.append("✓ Repository cloned successfully")
 
         # ── Step 2: Detect Stack ──────────────────
+        failure_step = "stack_detection"
         update_deployment_status(conn, deployment_id, "building",
                                  build_logs=_redact_text("\n".join(all_logs), _service_secret_values(env_vars)))
 
@@ -272,11 +283,13 @@ def process_deployment(conn, deployment: dict):
         update_service_status(conn, service_id, "deploying", detected_stack=stack)
 
         # ── Step 3: Generate Dockerfile ───────────
+        failure_step = "dockerfile_generation"
         all_logs.append("\n=== Generating Dockerfile ===")
         dockerfile_path = generate_dockerfile(source_path, stack)
         all_logs.append(f"✓ Dockerfile ready at {dockerfile_path}")
 
         # ── Step 4: Build Image ───────────────────
+        failure_step = "docker_build"
         all_logs.append(f"\n=== Building Docker image: {image_tag} ===")
         update_deployment_status(conn, deployment_id, "building",
                                  build_logs=_redact_text("\n".join(all_logs), _service_secret_values(env_vars)))
@@ -310,6 +323,7 @@ def process_deployment(conn, deployment: dict):
         all_logs.append(f"\n✓ Image built: {image_tag}")
 
         # ── Step 5: Deploy Container ──────────────
+        failure_step = "container_start"
         all_logs.append(f"\n=== Deploying container: {container_name} ===")
         update_deployment_status(conn, deployment_id, "deploying",
                                  image_tag=image_tag,
@@ -351,10 +365,33 @@ def process_deployment(conn, deployment: dict):
         error_msg = str(e)
         all_logs.append(f"\n❌ ERROR: {error_msg}")
         all_logs.append(traceback.format_exc())
+        secret_values = _service_secret_values(env_vars)
+        redacted_error = _redact_text(error_msg, secret_values)
+        full_logs = _redact_text("\n".join(all_logs), secret_values)
+
+        try:
+            snapshot = build_diagnostic_snapshot(
+                source_path=source_path,
+                detected_stack=stack,
+                full_logs=full_logs,
+                failure_step=failure_step,
+                error_message=redacted_error,
+            )
+            save_deployment_diagnostic_snapshot(conn, deployment_id, snapshot)
+        except Exception as snapshot_error:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.warning(
+                "Could not save diagnostic snapshot for deployment %s: %s",
+                deployment_id,
+                snapshot_error,
+            )
 
         update_deployment_status(conn, deployment_id, "failed",
-                                 error_message=_redact_text(error_msg, _service_secret_values(env_vars)),
-                                 build_logs=_redact_text("\n".join(all_logs), _service_secret_values(env_vars)))
+                                 error_message=redacted_error,
+                                 build_logs=full_logs)
         # BUG #2 is fixed in update_service_status — it clears LiveUrl/ContainerId on failure
         update_service_status(conn, service_id, "failed")
 

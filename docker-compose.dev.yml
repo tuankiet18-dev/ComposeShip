@@ -1,0 +1,22 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  traefik:
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./traefik/traefik.dev.yml:/etc/traefik/traefik.yml:ro
+
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5000:5000"
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+    ports:
+      - "3000:3000"

@@ -29,6 +29,7 @@ worker/**/bin/
 worker/**/obj/
 backend/**/*.user
 backend/**/*.suo
+*.lscache
 *.nupkg
 project.lock.json
 
@@ -54,6 +55,8 @@ __pycache__/
 *.so
 *.egg
 *.egg-info/
+worker/tests/fixtures/**/bin/
+worker/tests/fixtures/**/obj/
 dist/
 build/
 .eggs/

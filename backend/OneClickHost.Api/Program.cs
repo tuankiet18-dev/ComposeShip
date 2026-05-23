@@ -52,6 +52,7 @@ builder.Services.AddScoped<SecretBackfillService>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<ServiceService>();
 builder.Services.AddScoped<DeploymentService>();
+builder.Services.AddHttpClient<IAiDeploymentDiagnosisService, AiDeploymentDiagnosisService>();
 
 // ── Controllers ──────────────────────────────────
 builder.Services.AddControllers();

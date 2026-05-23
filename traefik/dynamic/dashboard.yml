@@ -1,18 +1,18 @@
-# Dynamic routing rules for OneClick-Host services
-# ─────────────────────────────────────
+# Dynamic routing rules for trusted OneClick-Host control-plane services.
+# Traefik reaches these services over control-net; user workloads are only
+# attached to apps-net and cannot resolve db/api/worker directly.
 
 http:
   routers:
-    # API routing
     api-router:
-      rule: "Host(`localhost`) && PathPrefix(`/api`)"
+      rule: "PathPrefix(`/api`)"
       service: api-service
       entryPoints:
         - web
+      priority: 100
 
-    # Frontend routing (catch-all for localhost)
     frontend-router:
-      rule: "Host(`localhost`)"
+      rule: "PathPrefix(`/`)"
       service: frontend-service
       entryPoints:
         - web

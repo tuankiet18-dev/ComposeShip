@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OneClickHost.Api.Data;
@@ -11,9 +12,11 @@ using OneClickHost.Api.Data;
 namespace OneClickHost.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260520111456_AddDeploymentAiDiagnoses")]
+    partial class AddDeploymentAiDiagnoses
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -189,41 +192,8 @@ namespace OneClickHost.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Branch")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<bool>("ComposeDeleteVolumesOnDelete")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("ComposeEnvJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ComposeFile")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("ComposeLiveUrlsJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ComposePostStartCommands")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ComposeProjectName")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<string>("ComposeRoutesJson")
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DeploymentMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
@@ -234,18 +204,10 @@ namespace OneClickHost.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("RepoUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
-
-                    b.Property<string>("Subfolder")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -258,53 +220,6 @@ namespace OneClickHost.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Projects");
-                });
-
-            modelBuilder.Entity("OneClickHost.Api.Models.ProjectDeployment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("BuildLogs")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ComposeProjectName")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ErrorMessage")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PublicUrlsJson")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId");
-
-                    b.ToTable("ProjectDeployments");
                 });
 
             modelBuilder.Entity("OneClickHost.Api.Models.Service", b =>
@@ -463,17 +378,6 @@ namespace OneClickHost.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("OneClickHost.Api.Models.ProjectDeployment", b =>
-                {
-                    b.HasOne("OneClickHost.Api.Models.Project", "Project")
-                        .WithMany("ProjectDeployments")
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Project");
-                });
-
             modelBuilder.Entity("OneClickHost.Api.Models.Service", b =>
                 {
                     b.HasOne("OneClickHost.Api.Models.Project", "Project")
@@ -494,8 +398,6 @@ namespace OneClickHost.Api.Migrations
 
             modelBuilder.Entity("OneClickHost.Api.Models.Project", b =>
                 {
-                    b.Navigation("ProjectDeployments");
-
                     b.Navigation("Services");
                 });
 

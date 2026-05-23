@@ -76,5 +76,7 @@ public record DeploymentSummary(
     int Version,
     DateTime? StartedAt,
     DateTime? CompletedAt,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    bool HasDiagnosticSnapshot,
+    bool HasAiDiagnosis
 );
