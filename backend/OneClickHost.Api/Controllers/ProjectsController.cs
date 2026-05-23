@@ -64,6 +64,110 @@ public class ProjectsController : ControllerBase
         }
     }
 
+    [HttpPut("{id:guid}/compose-config")]
+    public async Task<ActionResult<ComposeConfigResponse>> UpdateComposeConfig(Guid id, [FromBody] ComposeConfigRequest request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var config = await _projectService.UpdateComposeConfigAsync(id, userId, request);
+            return Ok(config);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/compose-inspect")]
+    public async Task<ActionResult<ComposeInspectResponse>> InspectCompose(Guid id, [FromBody] ComposeInspectRequest request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var result = await _projectService.InspectComposeAsync(id, userId, request);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/deploy")]
+    public async Task<ActionResult<ProjectDeploymentResponse>> DeployProject(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var deployment = await _projectService.TriggerProjectDeploymentAsync(id, userId);
+            return Accepted(deployment);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:guid}/deployments")]
+    public async Task<ActionResult<List<ProjectDeploymentResponse>>> GetProjectDeployments(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            return Ok(await _projectService.GetProjectDeploymentsAsync(id, userId));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+    }
+
+    [HttpPost("{id:guid}/stop")]
+    public async Task<IActionResult> StopProject(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            await _projectService.StopProjectAsync(id, userId);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("/api/project-deployments/{id:guid}/logs")]
+    public async Task<ActionResult<ProjectDeploymentLogsResponse>> GetProjectDeploymentLogs(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            return Ok(await _projectService.GetProjectDeploymentLogsAsync(id, userId));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project deployment not found." });
+        }
+    }
+
     private Guid GetUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value

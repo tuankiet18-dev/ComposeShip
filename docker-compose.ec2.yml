@@ -13,7 +13,6 @@ services:
       DOCKER_API_VERSION: "1.44"
     ports:
       - "80:80"
-      - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.ec2.yml:/etc/traefik/traefik.yml:ro

@@ -12,10 +12,12 @@ public class ServiceService
     private const string SecretMask = "********";
     private static readonly Regex EnvKeyRegex = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
     private readonly AppDbContext _db;
+    private readonly SecretEncryptionService _secrets;
 
-    public ServiceService(AppDbContext db)
+    public ServiceService(AppDbContext db, SecretEncryptionService secrets)
     {
         _db = db;
+        _secrets = secrets;
     }
 
     public async Task<List<ServiceResponse>> GetServicesAsync(Guid projectId, Guid userId)
@@ -52,11 +54,7 @@ public class ServiceService
             service.ServiceType, service.DetectedStack,
             service.NetworkAliases, service.ContainerId,
             service.Status, service.LiveUrl,
-            service.EnvironmentVariables.Select(ev => new EnvVarResponse(
-                ev.Id, ev.Key,
-                ev.IsSecret ? SecretMask : ev.Value,
-                ev.IsSecret
-            )).ToList(),
+            service.EnvironmentVariables.Select(ToEnvVarResponse).ToList(),
             service.Deployments.Select(d => new DeploymentSummary(
                 d.Id, d.Status, d.Version,
                 d.StartedAt, d.CompletedAt, d.CreatedAt,
@@ -80,6 +78,7 @@ public class ServiceService
             throw new ArgumentException("GitHub repository URL is required for frontend and backend services.");
 
         var serviceName = request.Name.Trim();
+        var subfolder = NormalizeRelativePath(request.Subfolder);
         var networkAliases = request.NetworkAliases;
         if (serviceType is "database" or "redis" && string.IsNullOrWhiteSpace(networkAliases))
             networkAliases = ToNetworkAlias(serviceName);
@@ -90,7 +89,7 @@ public class ServiceService
             Name = serviceName,
             RepoUrl = serviceType == "database" ? "postgres:16-alpine" : serviceType == "redis" ? "redis:7-alpine" : request.RepoUrl!,
             Branch = serviceType == "database" ? "postgres" : serviceType == "redis" ? "redis" : request.Branch ?? "main",
-            Subfolder = serviceType is "database" or "redis" ? null : request.Subfolder,
+            Subfolder = serviceType is "database" or "redis" ? null : subfolder,
             ServiceType = serviceType,
             NetworkAliases = networkAliases
         };
@@ -103,19 +102,19 @@ public class ServiceService
             service.EnvironmentVariables.Add(new EnvironmentVariable
             {
                 Key = "POSTGRES_DB",
-                Value = dbName,
+                Value = _secrets.Encrypt(dbName),
                 IsSecret = false
             });
             service.EnvironmentVariables.Add(new EnvironmentVariable
             {
                 Key = "POSTGRES_USER",
-                Value = dbName,
+                Value = _secrets.Encrypt(dbName),
                 IsSecret = false
             });
             service.EnvironmentVariables.Add(new EnvironmentVariable
             {
                 Key = "POSTGRES_PASSWORD",
-                Value = GeneratePassword(),
+                Value = _secrets.Encrypt(GeneratePassword()),
                 IsSecret = true
             });
         }
@@ -137,10 +136,13 @@ public class ServiceService
             .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
             ?? throw new KeyNotFoundException("Service not found.");
 
-        if (request.Name is not null) service.Name = request.Name;
-        if (request.RepoUrl is not null) service.RepoUrl = request.RepoUrl;
-        if (request.Branch is not null) service.Branch = request.Branch;
-        if (request.Subfolder is not null) service.Subfolder = request.Subfolder;
+        if (request.ServiceType is not null && !IsValidServiceType(request.ServiceType))
+            throw new ArgumentException($"Invalid service type: {request.ServiceType}");
+
+        if (request.Name is not null) service.Name = request.Name.Trim();
+        if (request.RepoUrl is not null) service.RepoUrl = request.RepoUrl.Trim();
+        if (request.Branch is not null) service.Branch = request.Branch.Trim();
+        if (request.Subfolder is not null) service.Subfolder = NormalizeRelativePath(request.Subfolder);
         if (request.ServiceType is not null) service.ServiceType = request.ServiceType;
         // Allow clearing aliases by passing empty string; null means "no change"
         if (request.NetworkAliases is not null)
@@ -254,7 +256,7 @@ public class ServiceService
             {
                 ServiceId = serviceId,
                 Key = ev.Key,
-                Value = value,
+                Value = _secrets.Encrypt(value),
                 IsSecret = ev.IsSecret
             });
         }
@@ -271,16 +273,36 @@ public class ServiceService
             .FirstOrDefaultAsync(s => s.Id == serviceId && s.Project.UserId == userId)
             ?? throw new KeyNotFoundException("Service not found.");
 
-        return service.EnvironmentVariables.Select(ev => new EnvVarResponse(
-            ev.Id, ev.Key,
-            ev.IsSecret ? SecretMask : ev.Value,
-            ev.IsSecret
-        )).ToList();
+        return service.EnvironmentVariables.Select(ToEnvVarResponse).ToList();
     }
 
     private static bool IsMaskedSecretValue(string value)
     {
         return value == SecretMask || value.Contains('•') || value.Contains("â€¢");
+    }
+
+    private EnvVarResponse ToEnvVarResponse(EnvironmentVariable envVar)
+    {
+        var value = envVar.IsSecret ? SecretMask : _secrets.Decrypt(envVar.Value);
+        return new EnvVarResponse(envVar.Id, envVar.Key, value, envVar.IsSecret);
+    }
+
+    private static string? NormalizeRelativePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        var raw = path.Trim().Replace('\\', '/');
+        if (Path.IsPathRooted(raw) || raw.StartsWith('/') || Regex.IsMatch(raw, "^[A-Za-z]:/"))
+            throw new ArgumentException("Service subfolder must be a relative path inside the repository.");
+
+        var normalized = raw.Trim('/');
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+        if (normalized.Split('/').Any(segment => segment is "" or "." or ".."))
+            throw new ArgumentException("Service subfolder must be a relative path inside the repository.");
+
+        return normalized;
     }
 
     private static bool IsValidServiceType(string serviceType)

@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectDeployment> ProjectDeployments => Set<ProjectDeployment>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<Deployment> Deployments => Set<Deployment>();
     public DbSet<DeploymentDiagnosticSnapshot> DeploymentDiagnosticSnapshots => Set<DeploymentDiagnosticSnapshot>();
@@ -36,6 +37,16 @@ public class AppDbContext : DbContext
              .WithOne(s => s.Project)
              .HasForeignKey(s => s.ProjectId)
              .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasMany(p => p.ProjectDeployments)
+             .WithOne(d => d.Project)
+             .HasForeignKey(d => d.ProjectId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(p => p.ComposeRoutesJson).HasColumnType("text");
+            e.Property(p => p.ComposeEnvJson).HasColumnType("text");
+            e.Property(p => p.ComposePostStartCommands).HasColumnType("text");
+            e.Property(p => p.ComposeLiveUrlsJson).HasColumnType("text");
         });
 
         // ── Service ───────────────────────────────
@@ -81,6 +92,12 @@ public class AppDbContext : DbContext
             e.Property(d => d.DiagnosisJson).HasColumnType("jsonb");
             e.Property(d => d.CreatedAt).HasDefaultValueSql("NOW()");
             e.Property(d => d.UpdatedAt).HasDefaultValueSql("NOW()");
+        });
+
+        modelBuilder.Entity<ProjectDeployment>(e =>
+        {
+            e.Property(d => d.BuildLogs).HasColumnType("text");
+            e.Property(d => d.PublicUrlsJson).HasColumnType("text");
         });
     }
 }

@@ -1,12 +1,36 @@
 import os
+import re
 import shutil
 import logging
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse, unquote
 from git import Repo
 
 from config import WORKSPACE_DIR
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_relative_path(path: str | None) -> str | None:
+    if not path or not path.strip():
+        return None
+
+    raw = path.strip().replace("\\", "/")
+    candidate = Path(raw)
+    if candidate.is_absolute() or raw.startswith("/") or re.match(r"^[A-Za-z]:/", raw) or any(part in {"", ".", ".."} for part in raw.strip("/").split("/")):
+        raise ValueError("Subfolder must be a relative path inside the repository.")
+    normalized = raw.strip("/")
+    if not normalized:
+        return None
+    return normalized
+
+
+def _resolve_under_root(root: str, relative_path: str) -> str:
+    root_path = Path(root).resolve()
+    resolved = (root_path / relative_path).resolve()
+    if root_path != resolved and root_path not in resolved.parents:
+        raise ValueError("Subfolder resolves outside the cloned repository.")
+    return str(resolved)
 
 
 def normalize_github_url(repo_url: str, branch: str, subfolder: str | None) -> tuple[str, str, str | None]:
@@ -45,7 +69,7 @@ def normalize_github_url(repo_url: str, branch: str, subfolder: str | None) -> t
             subfolder,
         )
 
-    return repo_root, branch, subfolder
+    return repo_root, branch, _normalize_relative_path(subfolder)
 
 
 def clone_repo(repo_url: str, branch: str, subfolder: str | None, deployment_id: str) -> str:
@@ -83,7 +107,7 @@ def clone_repo(repo_url: str, branch: str, subfolder: str | None, deployment_id:
 
     # If subfolder is specified, return path to that subfolder
     if subfolder:
-        source_path = os.path.join(clone_path, subfolder)
+        source_path = _resolve_under_root(clone_path, subfolder)
         if not os.path.exists(source_path):
             raise FileNotFoundError(
                 f"Subfolder '{subfolder}' not found in repository"

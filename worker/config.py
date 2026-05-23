@@ -20,4 +20,5 @@ TRAEFIK_NETWORK = os.getenv("TRAEFIK_NETWORK", "oneclick-apps-net")
 # Resource limits per container
 CONTAINER_MEMORY_LIMIT = os.getenv("CONTAINER_MEMORY_LIMIT", "256m")
 CONTAINER_CPU_LIMIT = float(os.getenv("CONTAINER_CPU_LIMIT", "0.5"))
+ENABLE_POST_START_COMMANDS = os.getenv("ONECLICK_ENABLE_POST_START_COMMANDS", "").lower() in {"1", "true", "yes"}
 CONTAINER_PIDS_LIMIT = int(os.getenv("CONTAINER_PIDS_LIMIT", "256"))

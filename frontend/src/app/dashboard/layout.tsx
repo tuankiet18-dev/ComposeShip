@@ -88,8 +88,8 @@ export default function DashboardLayout({
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => {
-                  logout();
+                onClick={async () => {
+                  await logout();
                   router.push("/");
                 }}
                 className="text-red-400 cursor-pointer"

@@ -69,7 +69,7 @@ export default function ProjectsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this project and all its services?")) return;
+    if (!confirm("Delete this project, all services, and its volumes/data?")) return;
     try {
       setProjects((items) => items.filter((project) => project.id !== id));
       await api.deleteProject(id);

@@ -3,7 +3,7 @@ export interface AuthResponse {
   id: string;
   email: string;
   fullName: string;
-  token: string;
+  token?: string;
 }
 
 export interface UserProfile {

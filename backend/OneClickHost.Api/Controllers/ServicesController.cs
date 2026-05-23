@@ -64,6 +64,10 @@ public class ServicesController : ControllerBase
         {
             return NotFound(new { message = "Service not found." });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPut("api/services/{id:guid}")]
@@ -78,6 +82,10 @@ public class ServicesController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "Service not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

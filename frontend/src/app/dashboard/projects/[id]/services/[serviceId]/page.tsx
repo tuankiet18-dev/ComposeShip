@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Save, Sparkles, Square, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Plus, Save, Sparkles, Square, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,13 +47,15 @@ export default function ServiceDetailPage() {
   const [aiLoadingId, setAiLoadingId] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [envRows, setEnvRows] = useState<EnvRow[]>([]);
+  const [visibleEnvRows, setVisibleEnvRows] = useState<Set<number>>(new Set());
   const [envSaving, setEnvSaving] = useState(false);
   const [envError, setEnvError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
 
   const loadService = useCallback(() => {
-    api.getService(serviceId)
+    api
+      .getService(serviceId)
       .then((data) => {
         setService(data);
         setEnvRows(data.environmentVariables.map((ev) => ({
@@ -62,6 +64,7 @@ export default function ServiceDetailPage() {
           value: ev.value,
           isSecret: ev.isSecret,
         })));
+        setVisibleEnvRows(new Set());
         setEnvError(null);
       })
       .catch(console.error)
@@ -81,7 +84,7 @@ export default function ServiceDetailPage() {
   };
 
   const handleDeleteProject = async () => {
-    if (!confirm("Delete this project and stop all of its services?")) return;
+    if (!confirm("Delete this project, stop all services, and remove its volumes/data?")) return;
     setDeletingProject(true);
     try {
       await api.deleteProject(projectId);
@@ -128,6 +131,16 @@ export default function ServiceDetailPage() {
 
   const removeEnvRow = (index: number) => {
     setEnvRows((rows) => rows.filter((_, i) => i !== index));
+    setVisibleEnvRows(new Set());
+  };
+
+  const toggleEnvVisibility = (index: number) => {
+    setVisibleEnvRows((rows) => {
+      const next = new Set(rows);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   };
 
   const saveEnvVars = async () => {
@@ -214,7 +227,11 @@ export default function ServiceDetailPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="deployments" className="space-y-4">
-        <TabsList><TabsTrigger value="deployments">Deployments</TabsTrigger><TabsTrigger value="env">Environment</TabsTrigger><TabsTrigger value="settings">Settings</TabsTrigger></TabsList>
+        <TabsList>
+          <TabsTrigger value="deployments">Deployments</TabsTrigger>
+          <TabsTrigger value="env">Environment Variables ({envRows.length})</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
 
         {/* Deployments Tab */}
         <TabsContent value="deployments" className="space-y-4">
@@ -337,10 +354,10 @@ export default function ServiceDetailPage() {
         <TabsContent value="env">
           <Card className="border-border/50">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Environment Variables</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={addEnvRow}>
-                <Plus className="mr-2 h-4 w-4" /> Add
-              </Button>
+              <div>
+                <CardTitle className="text-lg">Environment Variables</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Saved values are encrypted at rest and decrypted only for deploys or the project owner.</p>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
@@ -348,7 +365,7 @@ export default function ServiceDetailPage() {
                   <p className="text-muted-foreground text-sm">No environment variables configured.</p>
                 ) : (
                   envRows.map((row, index) => (
-                    <div key={row.id ?? index} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto_auto]">
+                    <div key={row.id ?? index} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto_auto_auto]">
                       <Input
                         value={row.key}
                         onChange={(event) => updateEnvRow(index, { key: event.target.value })}
@@ -359,9 +376,12 @@ export default function ServiceDetailPage() {
                         value={row.value}
                         onChange={(event) => updateEnvRow(index, { value: event.target.value })}
                         placeholder={row.isSecret ? SECRET_MASK : "value"}
-                        type={row.isSecret ? "password" : "text"}
+                        type={row.isSecret && !visibleEnvRows.has(index) ? "password" : "text"}
                         className="font-mono"
                       />
+                      <Button type="button" variant="outline" size="icon" onClick={() => toggleEnvVisibility(index)} aria-label={visibleEnvRows.has(index) ? "Hide value" : "Show value"}>
+                        {visibleEnvRows.has(index) ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                       <label className="flex h-10 items-center gap-2 text-sm text-muted-foreground">
                         <input
                           type="checkbox"
@@ -380,7 +400,10 @@ export default function ServiceDetailPage() {
               </div>
               {envError && <p className="text-sm text-red-400">{envError}</p>}
               <div className="flex items-center justify-between gap-4">
-                <p className="text-xs text-muted-foreground">Changes apply on the next deploy. Secret values are masked after saving.</p>
+                <Button type="button" variant="outline" size="sm" onClick={addEnvRow}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Variable
+                </Button>
+                <p className="text-xs text-muted-foreground">Changes apply on the next deploy. Values are encrypted at rest and can be revealed here by the project owner.</p>
                 <Button type="button" onClick={saveEnvVars} disabled={envSaving}>
                   <Save className="mr-2 h-4 w-4" /> {envSaving ? "Saving..." : "Save"}
                 </Button>

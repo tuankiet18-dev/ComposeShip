@@ -14,7 +14,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,25 +24,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const stored = localStorage.getItem("user");
-    const token = localStorage.getItem("token");
-
-    if (stored && token) {
+    const loadSession = async () => {
+      const stored = localStorage.getItem("user");
       try {
-        setUser(JSON.parse(stored));
+        if (stored) {
+          setUser(JSON.parse(stored));
+        }
+
+        const profile = await api.getProfile();
+        const userData = { id: profile.id, email: profile.email, fullName: profile.fullName };
+        localStorage.setItem("user", JSON.stringify(userData));
+        setUser(userData);
       } catch {
+        setUser(null);
         localStorage.removeItem("user");
-        localStorage.removeItem("token");
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+
+    loadSession();
   }, []);
 
   const login = async (email: string, password: string) => {
     const response = await api.login(email, password);
     const userData = { id: response.id, email: response.email, fullName: response.fullName };
-    localStorage.setItem("token", response.token);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
   };
@@ -50,13 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, password: string, fullName: string) => {
     const response = await api.register(email, password, fullName);
     const userData = { id: response.id, email: response.email, fullName: response.fullName };
-    localStorage.setItem("token", response.token);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
+  const logout = async () => {
+    await api.logout().catch(() => undefined);
     localStorage.removeItem("user");
     setUser(null);
   };

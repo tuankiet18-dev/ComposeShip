@@ -1,35 +1,26 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 class ApiClient {
-  private getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("token");
-  }
-
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    redirectOnUnauthorized = true
   ): Promise<T> {
-    const token = this.getToken();
-
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const response = await fetch(`${API_BASE}${endpoint}`, {
+      cache: "no-store",
+      credentials: "include",
       ...options,
       headers,
     });
 
     if (response.status === 401) {
       // Token expired or invalid
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("token");
+      if (redirectOnUnauthorized && typeof window !== "undefined") {
         localStorage.removeItem("user");
         window.location.href = "/login";
       }
@@ -41,10 +32,11 @@ class ApiClient {
       throw new Error(error.message || `API Error: ${response.status}`);
     }
 
-    // Handle 204 No Content
-    if (response.status === 204) return {} as T;
+    // Handle empty responses (like 204 No Content or 202 Accepted)
+    const text = await response.text();
+    if (!text) return {} as T;
 
-    return response.json();
+    return JSON.parse(text);
   }
 
   // ── Auth ─────────────────────────────────
@@ -53,7 +45,7 @@ class ApiClient {
       id: string;
       email: string;
       fullName: string;
-      token: string;
+      token?: string;
     }>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, fullName }),
@@ -65,7 +57,7 @@ class ApiClient {
       id: string;
       email: string;
       fullName: string;
-      token: string;
+      token?: string;
     }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -78,7 +70,11 @@ class ApiClient {
       email: string;
       fullName: string;
       createdAt: string;
-    }>("/auth/me");
+    }>("/auth/me", {}, false);
+  }
+
+  async logout() {
+    return this.request("/auth/logout", { method: "POST" }, false);
   }
 
   // ── Projects ─────────────────────────────
@@ -89,6 +85,7 @@ class ApiClient {
         name: string;
         description: string | null;
         status: string;
+        deploymentMode: string;
         serviceCount: number;
         createdAt: string;
         updatedAt: string;
@@ -106,10 +103,13 @@ class ApiClient {
   async getProject(id: string) {
     return this.request<{
       id: string;
-      name: string;
-      description: string | null;
-      status: string;
-      services: {
+        name: string;
+        description: string | null;
+        status: string;
+        deploymentMode: string;
+        composeConfig: ComposeConfig | null;
+        recentProjectDeployments: ProjectDeployment[];
+        services: {
         id: string;
         name: string;
         serviceType: string;
@@ -124,6 +124,36 @@ class ApiClient {
 
   async deleteProject(id: string) {
     return this.request(`/projects/${id}`, { method: "DELETE" });
+  }
+
+  async updateComposeConfig(projectId: string, data: ComposeConfigRequest) {
+    return this.request<ComposeConfig>(`/projects/${projectId}/compose-config`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async inspectCompose(projectId: string, data: ComposeInspectRequest) {
+    return this.request<ComposeInspectResponse>(`/projects/${projectId}/compose-inspect`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deployProject(projectId: string) {
+    return this.request<ProjectDeployment>(`/projects/${projectId}/deploy`, { method: "POST" });
+  }
+
+  async stopProject(projectId: string) {
+    return this.request(`/projects/${projectId}/stop`, { method: "POST" });
+  }
+
+  async getProjectDeploymentLogs(id: string) {
+    return this.request<{
+      deploymentId: string;
+      status: string;
+      buildLogs: string | null;
+    }>(`/project-deployments/${id}/logs`);
   }
 
   // ── Services ─────────────────────────────
@@ -298,3 +328,76 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+export type ComposeRoute = {
+  serviceName: string;
+  routeSlug: string;
+  internalPort: number;
+  healthPath?: string | null;
+  liveUrl?: string | null;
+};
+
+export type ComposeEnvVar = {
+  serviceName: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+};
+
+export type ComposeConfig = {
+  repoUrl: string | null;
+  branch: string;
+  subfolder: string | null;
+  composeFile: string | null;
+  composeProjectName: string | null;
+  routes: ComposeRoute[];
+  environmentVariables: ComposeEnvVar[];
+  postStartCommands: string | null;
+  liveUrls: string[];
+};
+
+export type ComposeConfigRequest = {
+  repoUrl: string;
+  branch?: string;
+  subfolder?: string;
+  composeFile?: string;
+  routes: ComposeRoute[];
+  environmentVariables?: ComposeEnvVar[];
+  postStartCommands?: string;
+};
+
+export type ComposeInspectRequest = {
+  repoUrl: string;
+  branch?: string;
+  subfolder?: string;
+  composeFile?: string;
+};
+
+export type ComposeServiceSuggestion = {
+  name: string;
+  image: string | null;
+  buildContext: string | null;
+  ports: number[];
+  environmentKeys: string[];
+  looksPublic: boolean;
+};
+
+export type ComposeInspectResponse = {
+  composeFile: string;
+  services: ComposeServiceSuggestion[];
+  suggestedRoutes: ComposeRoute[];
+  suggestedEnvironmentVariables: ComposeEnvVar[];
+};
+
+export type ProjectDeployment = {
+  id: string;
+  projectId: string;
+  status: string;
+  composeProjectName: string | null;
+  publicUrls: string[];
+  errorMessage: string | null;
+  version: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+};

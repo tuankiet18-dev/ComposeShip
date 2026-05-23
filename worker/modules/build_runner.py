@@ -10,6 +10,7 @@ from config import (
     TRAEFIK_NETWORK,
     CONTAINER_MEMORY_LIMIT,
     CONTAINER_CPU_LIMIT,
+    ENABLE_POST_START_COMMANDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,9 @@ def _run_post_start_hooks(container, container_name: str, environment: dict[str,
             )
 
         post_start_commands = (environment or {}).get("ONECLICK_POST_START_COMMANDS", "")
+        if post_start_commands and not ENABLE_POST_START_COMMANDS:
+            raise RuntimeError("Post-start commands are disabled on this worker.")
+
         for index, command in enumerate(post_start_commands.splitlines(), start=1):
             command = command.strip()
             if not command or command.startswith("#"):

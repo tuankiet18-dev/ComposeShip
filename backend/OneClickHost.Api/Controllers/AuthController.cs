@@ -10,11 +10,16 @@ namespace OneClickHost.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private const string AccessTokenCookieName = "access_token";
     private readonly AuthService _authService;
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _environment;
 
-    public AuthController(AuthService authService)
+    public AuthController(AuthService authService, IConfiguration configuration, IWebHostEnvironment environment)
     {
         _authService = authService;
+        _configuration = configuration;
+        _environment = environment;
     }
 
     [HttpPost("register")]
@@ -23,7 +28,8 @@ public class AuthController : ControllerBase
         try
         {
             var response = await _authService.RegisterAsync(request);
-            return Ok(response);
+            SetAccessTokenCookie(response.Token);
+            return Ok(CreateClientAuthResponse(response));
         }
         catch (InvalidOperationException ex)
         {
@@ -37,7 +43,8 @@ public class AuthController : ControllerBase
         try
         {
             var response = await _authService.LoginAsync(request);
-            return Ok(response);
+            SetAccessTokenCookie(response.Token);
+            return Ok(CreateClientAuthResponse(response));
         }
         catch (UnauthorizedAccessException)
         {
@@ -54,10 +61,36 @@ public class AuthController : ControllerBase
         return Ok(profile);
     }
 
+    [HttpPost("logout")]
+    public IActionResult Logout()
+    {
+        Response.Cookies.Delete(AccessTokenCookieName, CreateCookieOptions());
+        return NoContent();
+    }
+
     private Guid GetUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? throw new UnauthorizedAccessException();
         return Guid.Parse(claim);
     }
+
+    private void SetAccessTokenCookie(string token)
+    {
+        var options = CreateCookieOptions();
+        var expiryHours = int.Parse(_configuration["Jwt:ExpiryHours"] ?? "24");
+        options.Expires = DateTimeOffset.UtcNow.AddHours(expiryHours);
+        Response.Cookies.Append(AccessTokenCookieName, token, options);
+    }
+
+    private AuthResponse CreateClientAuthResponse(AuthResponse response) =>
+        _environment.IsDevelopment() ? response : response with { Token = string.Empty };
+
+    private CookieOptions CreateCookieOptions() => new()
+    {
+        HttpOnly = true,
+        Secure = !_environment.IsDevelopment(),
+        SameSite = SameSiteMode.Lax,
+        Path = "/"
+    };
 }
