@@ -111,16 +111,18 @@ services:
       - oneclick-net
 
   # ─────────────────────────────────────────────
-  # Next.js Frontend Dashboard
+  # React + Vite Frontend Dashboard
   # ─────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
     container_name: oneclick-frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
     ports:
       - "3000:3000"
     labels:

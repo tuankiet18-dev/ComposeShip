@@ -1,21 +1,19 @@
-"use client";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api } from "./api";
-
-interface User {
+type User = {
   id: string;
   email: string;
   fullName: string;
-}
+};
 
-interface AuthContextType {
+type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
-}
+};
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -27,17 +25,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const loadSession = async () => {
       const stored = localStorage.getItem("user");
       try {
-        if (stored) {
-          setUser(JSON.parse(stored));
-        }
-
+        if (stored) setUser(JSON.parse(stored));
         const profile = await api.getProfile();
-        const userData = { id: profile.id, email: profile.email, fullName: profile.fullName };
+        const userData = {
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.fullName,
+        };
         localStorage.setItem("user", JSON.stringify(userData));
         setUser(userData);
       } catch {
-        setUser(null);
         localStorage.removeItem("user");
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
@@ -74,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  const value = useContext(AuthContext);
+  if (!value) throw new Error("useAuth must be used within AuthProvider");
+  return value;
 }

@@ -17,6 +17,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
     ("springboot-gradle", "springboot-gradle"),
     ("python-fastapi", "python-fastapi"),
     ("nextjs", "nextjs"),
+    ("angular", "angular"),
     ("react", "react"),
 ])
 def test_detect_stack_success(fixture_name, expected_stack):
@@ -35,6 +36,7 @@ def test_detect_stack_unsupported():
     ("springboot-gradle", "springboot-gradle"),
     ("python-fastapi", "python-fastapi"),
     ("nextjs", "nextjs"),
+    ("angular", "angular"),
     ("react", "react"),
 ])
 def test_generate_dockerfile(fixture_name, stack):
@@ -50,6 +52,25 @@ def test_generate_dockerfile(fixture_name, stack):
     # Check that it's not empty and contains some basic docker instructions
     assert "FROM " in content
     assert "EXPOSE " in content
+
+
+def test_generate_aspnet_dockerfile_uses_target_framework(tmp_path):
+    (tmp_path / "Api.csproj").write_text(
+        """<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+""",
+        encoding="utf-8",
+    )
+
+    dockerfile_path = dockerfile_generator.generate_dockerfile(str(tmp_path), "aspnet")
+    with open(dockerfile_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "mcr.microsoft.com/dotnet/sdk:9.0" in content
+    assert "mcr.microsoft.com/dotnet/aspnet:9.0" in content
 
 
 def test_normalize_github_tree_url():

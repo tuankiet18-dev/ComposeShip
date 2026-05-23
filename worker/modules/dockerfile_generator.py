@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ TEMPLATE_MAP = {
     "springboot-gradle": "springboot-gradle.Dockerfile",
     "python-fastapi": "python-fastapi.Dockerfile",
     "nextjs": "nextjs.Dockerfile",
+    "angular": "angular.Dockerfile",
     "react": "react.Dockerfile",
 }
 
@@ -44,7 +46,41 @@ def generate_dockerfile(source_path: str, stack: str) -> str:
     # Copy template to source directory
     target_path = os.path.join(source_path, "Dockerfile")
     with open(template_path, "r") as src, open(target_path, "w") as dst:
-        dst.write(src.read())
+        dst.write(_render_template(src.read(), source_path, stack))
 
     logger.info(f"Generated Dockerfile for stack '{stack}' at {target_path}")
     return target_path
+
+
+def _render_template(template: str, source_path: str, stack: str) -> str:
+    if stack != "aspnet":
+        return template
+
+    dotnet_version = _detect_dotnet_version(source_path)
+    return template.replace("{{DOTNET_VERSION}}", dotnet_version)
+
+
+def _detect_dotnet_version(source_path: str) -> str:
+    for entry in sorted(os.listdir(source_path)):
+        if not entry.endswith(".csproj"):
+            continue
+
+        csproj_path = os.path.join(source_path, entry)
+        try:
+            with open(csproj_path, "r", encoding="utf-8") as project_file:
+                content = project_file.read()
+        except OSError:
+            continue
+
+        match = re.search(r"<TargetFramework>\s*net(\d+)(?:\.\d+)?\s*</TargetFramework>", content)
+        if match:
+            return f"{match.group(1)}.0"
+
+        match = re.search(r"<TargetFrameworks>\s*([^<]+)\s*</TargetFrameworks>", content)
+        if match:
+            for target_framework in match.group(1).split(";"):
+                version_match = re.search(r"net(\d+)(?:\.\d+)?", target_framework.strip())
+                if version_match:
+                    return f"{version_match.group(1)}.0"
+
+    return "10.0"

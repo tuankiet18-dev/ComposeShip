@@ -22,6 +22,7 @@ def run_tests_and_generate_report():
         {"name": "springboot-maven", "expected_stack": "springboot-maven"},
         {"name": "springboot-gradle", "expected_stack": "springboot-gradle"},
         {"name": "nextjs", "expected_stack": "nextjs"},
+        {"name": "angular", "expected_stack": "angular"},
         {"name": "react", "expected_stack": "react"},
         {"name": "unsupported", "expected_stack": "unsupported"},
     ]
@@ -78,6 +79,10 @@ def run_tests_and_generate_report():
                 os.makedirs(os.path.join(source_path, "src"), exist_ok=True)
                 with open(os.path.join(source_path, "src", "index.js"), "w") as f:
                     f.write("console.log('React app');")
+            elif expected == "angular":
+                os.makedirs(os.path.join(source_path, "src"), exist_ok=True)
+                with open(os.path.join(source_path, "src", "main.ts"), "w") as f:
+                    f.write("console.log('Angular app');")
             # Spring boot needs src/main/java
             elif expected in ["springboot-maven", "springboot-gradle"]:
                 os.makedirs(os.path.join(source_path, "src", "main", "java"), exist_ok=True)
