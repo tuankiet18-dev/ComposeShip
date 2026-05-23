@@ -204,6 +204,9 @@ def _candidate_files(root: Path, detected_stack: str | None) -> list[Path]:
         add_exact("package.json", "package-lock.json")
         add_glob("vite.config.*")
         add_exact("tsconfig.json", "jsconfig.json", "Dockerfile", ".env.example")
+    elif stack == "angular":
+        add_exact("package.json", "package-lock.json", "angular.json")
+        add_exact("tsconfig.json", "tsconfig.app.json", "Dockerfile", ".env.example")
     elif stack == "nextjs":
         add_exact("package.json")
         add_glob("next.config.*")

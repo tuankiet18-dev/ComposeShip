@@ -1,0 +1,13 @@
+{
+  "name": "my-angular-app",
+  "scripts": {
+    "build": "ng build --configuration production"
+  },
+  "dependencies": {
+    "@angular/core": "^20.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@angular/cli": "^20.0.0"
+  }
+}

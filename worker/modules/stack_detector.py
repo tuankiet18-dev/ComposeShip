@@ -10,7 +10,7 @@ def detect_stack(source_path: str) -> str:
     Detect the technology stack of a project by examining its files.
 
     Returns one of: 'aspnet', 'springboot-maven', 'springboot-gradle',
-    'python-fastapi', 'nextjs', 'react'
+    'python-fastapi', 'nextjs', 'angular', 'react'
     Raises ValueError if no supported stack is detected.
     """
 
@@ -65,6 +65,7 @@ def detect_stack(source_path: str) -> str:
             pkg = json.load(f)
 
         all_deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        angular_config_exists = os.path.exists(os.path.join(source_path, "angular.json"))
 
         # Check for Next.js first (more specific)
         next_config_exists = any(
@@ -75,6 +76,12 @@ def detect_stack(source_path: str) -> str:
             logger.info("Detected stack: nextjs")
             return "nextjs"
 
+        # Angular projects can include React-related packages for embedded widgets,
+        # so detect Angular before the looser React/Vite/CRA check.
+        if "@angular/core" in all_deps or "@angular/cli" in all_deps or angular_config_exists:
+            logger.info("Detected stack: angular")
+            return "angular"
+
         # React (CRA or Vite)
         if "react" in all_deps and ("react-scripts" in all_deps or "vite" in all_deps):
             logger.info("Detected stack: react")
@@ -82,5 +89,5 @@ def detect_stack(source_path: str) -> str:
 
     raise ValueError(
         f"Could not detect a supported tech stack in {source_path}. "
-        "Supported: ASP.NET Core, Spring Boot (Maven/Gradle), Python/FastAPI, Next.js, React (Vite/CRA)"
+        "Supported: ASP.NET Core, Spring Boot (Maven/Gradle), Python/FastAPI, Next.js, Angular, React (Vite/CRA)"
     )

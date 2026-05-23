@@ -117,3 +117,4 @@ traefik/dynamic/*.yml
 *.tmp
 coverage/
 scratch/
+scripts/artifacts/
