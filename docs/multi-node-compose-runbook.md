@@ -68,6 +68,7 @@ Nếu chạy trên Docker Desktop, có thể đặt:
 CONTROL_PLANE_PUBLIC_IP=127.0.0.1
 CONTROL_PLANE_API_BIND=127.0.0.1
 CONTROL_PLANE_API_HOST=host.docker.internal
+CONTROL_PLANE_POSTGRES_PASSWORD=12345
 EXECUTION_NODE_PRIVATE_IP=host.docker.internal
 ```
 
@@ -75,6 +76,9 @@ EXECUTION_NODE_PRIVATE_IP=host.docker.internal
 hostname ở biến này. `CONTROL_PLANE_API_HOST` là hostname/IP mà execution-node
 container dùng để gọi control-plane API. Trên Docker Desktop Windows/macOS, giá
 trị này thường là `host.docker.internal`.
+`CONTROL_PLANE_POSTGRES_PASSWORD=12345` chỉ cần khi reuse volume local đã tạo từ
+file `.env` dev hiện tại. Nếu muốn dùng password random mới từ generated secrets,
+chạy `docker compose down -v` trước để tạo lại PostgreSQL volume sạch.
 
 Local có thể khác Linux VM thật ở phần private firewall, nhưng đủ để kiểm tra:
 registration, heartbeat, lease, build Compose, route target và cleanup.

@@ -18,6 +18,7 @@ Optional:
   ADMIN_CORS_ORIGIN=http://1.2.3.4.sslip.io
   CONTROL_PLANE_API_BIND=10.0.1.10
   CONTROL_PLANE_API_HOST=10.0.1.10
+  CONTROL_PLANE_POSTGRES_PASSWORD=existing-local-password
 
 This renders:
   .generated/multinode/control-plane.env
@@ -45,6 +46,7 @@ set +a
 control_plane_private_ip="${CONTROL_PLANE_PRIVATE_IP:-$CONTROL_PLANE_PUBLIC_IP}"
 control_plane_api_bind="${CONTROL_PLANE_API_BIND:-$control_plane_private_ip}"
 control_plane_api_host="${CONTROL_PLANE_API_HOST:-$control_plane_private_ip}"
+control_plane_postgres_password="${CONTROL_PLANE_POSTGRES_PASSWORD:-$POSTGRES_PASSWORD}"
 traefik_domain="${CONTROL_PLANE_PUBLIC_IP}.sslip.io"
 admin_cors_origin="${ADMIN_CORS_ORIGIN:-http://${traefik_domain}}"
 
@@ -55,8 +57,8 @@ cat >"${output_dir}/control-plane.env" <<EOF
 ASPNETCORE_ENVIRONMENT=Production
 POSTGRES_DB=oneclickhost
 POSTGRES_USER=oneclick
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-CONNECTION_STRING=Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${POSTGRES_PASSWORD}
+POSTGRES_PASSWORD=${control_plane_postgres_password}
+CONNECTION_STRING=Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${control_plane_postgres_password}
 JWT_SECRET=${JWT_SECRET}
 ONECLICK_SECRET_KEY=${ONECLICK_SECRET_KEY}
 JWT_ISSUER=oneclick-host
