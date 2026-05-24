@@ -11,7 +11,7 @@ import logging
 import traceback
 import json
 
-from config import POLL_INTERVAL, TRAEFIK_DOMAIN
+from config import LOG_MAX_BYTES, POLL_INTERVAL, TRAEFIK_DOMAIN, WORKER_MODE
 from db import (
     get_connection,
     fetch_queued_deployment,
@@ -54,6 +54,7 @@ from modules.compose_runner import (
     find_compose_file,
 )
 from secret_utils import decrypt_secret
+from internal_api import ExecutionNodeClient
 
 # ── Logging Setup ─────────────────────────────────
 logging.basicConfig(
@@ -96,6 +97,27 @@ def _service_secret_values(env_vars: dict[str, str]) -> list[str]:
     return [value for value in env_vars.values() if value]
 
 
+def _truncate_logs(value: str) -> str:
+    return value if len(value) <= LOG_MAX_BYTES else value[-LOG_MAX_BYTES:]
+
+
+def _failure_category(error: Exception) -> str:
+    value = str(error).lower()
+    if "clone" in value or "repository" in value or "github" in value:
+        return "clone"
+    if "compose file" in value or "blocked" in value or "invalid" in value or "unsafe" in value:
+        return "validation"
+    if "build" in value:
+        return "build"
+    if "health" in value or "unhealthy" in value:
+        return "healthcheck"
+    if "route" in value or "port" in value:
+        return "routing"
+    if "container" in value or "stack" in value:
+        return "startup"
+    return "platform"
+
+
 def process_project_deployment(conn, deployment: dict):
     """Full Docker Compose deployment pipeline for a project-level deployment."""
     deployment_id = str(deployment["Id"])
@@ -121,7 +143,7 @@ def process_project_deployment(conn, deployment: dict):
         all_logs.append(f"✓ Compose file found: {compose_file}")
 
         update_project_deployment_status(conn, deployment_id, "deploying", build_logs=_redact_text("\n".join(all_logs), secret_values))
-        public_urls, compose_logs = deploy_compose_stack(
+        public_urls, compose_logs, _ = deploy_compose_stack(
             source_path=source_path,
             compose_file=compose_file,
             project_id=project_id,
@@ -163,6 +185,101 @@ def process_project_deployment(conn, deployment: dict):
         update_project_status(conn, project_id, "failed")
         logger.error(f"❌ Compose deployment {deployment_id} failed: {error_msg}")
 
+    finally:
+        cleanup_workspace(deployment_id)
+
+
+def process_project_deployment_lease(client: ExecutionNodeClient, deployment: dict):
+    """Docker Compose deployment pipeline for an API-leased execution node job."""
+    deployment_id = str(deployment["deploymentId"])
+    project_id = str(deployment["projectId"])
+    project_name = deployment["projectName"]
+    repo_url = deployment["repoUrl"]
+    branch = deployment["branch"]
+    subfolder = deployment.get("subfolder")
+    compose_project_name = deployment["composeProjectName"]
+    routes = deployment.get("routes") or []
+    env_vars = deployment.get("environmentVariables") or []
+    secret_values = _compose_secret_values(env_vars)
+    all_logs: list[str] = []
+
+    try:
+        all_logs.append(f"=== Cloning {repo_url} (branch: {branch}) ===")
+        source_path = clone_repo(repo_url, branch, subfolder, deployment_id)
+        all_logs.append("Repository cloned successfully")
+        client.event(
+            deployment_id,
+            {
+                "kind": "compose",
+                "status": "building",
+                "buildLogs": _truncate_logs(_redact_text("\n".join(all_logs), secret_values)),
+            },
+        )
+
+        compose_file = find_compose_file(source_path, deployment.get("composeFile"))
+        all_logs.append(f"Compose file found: {compose_file}")
+        client.event(
+            deployment_id,
+            {
+                "kind": "compose",
+                "status": "deploying",
+                "buildLogs": _truncate_logs(_redact_text("\n".join(all_logs), secret_values)),
+            },
+        )
+
+        public_urls, compose_logs, route_targets = deploy_compose_stack(
+            source_path=source_path,
+            compose_file=compose_file,
+            project_id=project_id,
+            deployment_id=deployment_id,
+            project_name=project_name,
+            compose_project_name=compose_project_name,
+            routes=routes,
+            env_vars=env_vars,
+            post_start_commands=deployment.get("postStartCommands"),
+            route_mode="execution-node",
+        )
+        all_logs.append(compose_logs)
+
+        for route_target in route_targets:
+            client.route_target(
+                {
+                    "projectId": project_id,
+                    "projectDeploymentId": deployment_id,
+                    "serviceId": None,
+                    "host": route_target["host"],
+                    "targetUrl": route_target["targetUrl"],
+                    "status": "active",
+                }
+            )
+
+        all_logs.append("Public URLs:")
+        all_logs.extend(public_urls)
+        client.event(
+            deployment_id,
+            {
+                "kind": "compose",
+                "status": "live",
+                "publicUrls": public_urls,
+                "buildLogs": _truncate_logs(_redact_text("\n".join(all_logs), secret_values)),
+            },
+        )
+        logger.info("Compose deployment %s succeeded: %s", deployment_id, ", ".join(public_urls))
+    except Exception as e:
+        error_msg = str(e)
+        all_logs.append(f"\nERROR: {error_msg}")
+        all_logs.append(traceback.format_exc())
+        client.event(
+            deployment_id,
+            {
+                "kind": "compose",
+                "status": "failed",
+                "errorMessage": _redact_text(error_msg, secret_values),
+                "failureCategory": _failure_category(e),
+                "buildLogs": _truncate_logs(_redact_text("\n".join(all_logs), secret_values)),
+            },
+        )
+        logger.error("Compose deployment %s failed: %s", deployment_id, error_msg)
     finally:
         cleanup_workspace(deployment_id)
 
@@ -514,9 +631,9 @@ def process_stopping_services(conn):
             logger.debug(traceback.format_exc())
 
 
-def main():
-    """Main polling loop."""
-    logger.info("🚀 OneClick-Host Worker started")
+def run_singlehost_loop():
+    """Legacy local/dev polling loop that reads jobs directly from PostgreSQL."""
+    logger.info("OneClick-Host Worker started in singlehost-dev mode")
     logger.info(f"   Poll interval: {POLL_INTERVAL}s")
 
     while True:
@@ -559,6 +676,55 @@ def main():
             logger.debug(traceback.format_exc())
 
         time.sleep(POLL_INTERVAL)
+
+
+def run_executor_loop():
+    """Production execution-node loop. Jobs are leased through the control-plane API."""
+    logger.info("OneClick-Host Worker started in executor mode")
+    client = ExecutionNodeClient()
+    client.ensure_registered()
+
+    while True:
+        try:
+            client.heartbeat(current_builds=0, status="active")
+            lease = client.lease()
+            if lease.get("hasWork") and lease.get("kind") == "compose":
+                process_project_deployment_lease(client, lease["compose"])
+            elif lease.get("hasWork"):
+                logger.warning("Service deployment leases are reserved for a later executor implementation.")
+                service = lease.get("service") or {}
+                deployment_id = service.get("deploymentId")
+                if deployment_id:
+                    client.event(
+                        deployment_id,
+                        {
+                            "kind": "service",
+                            "status": "failed",
+                            "failureCategory": "platform",
+                            "errorMessage": "Service deployment executor is not enabled; use Compose deployment for multi-node production.",
+                        },
+                    )
+            else:
+                logger.debug("No leased work. Sleeping...")
+        except KeyboardInterrupt:
+            logger.info("Worker shutting down...")
+            break
+        except Exception as e:
+            logger.error("Executor loop error: %s", e)
+            logger.debug(traceback.format_exc())
+
+        time.sleep(POLL_INTERVAL)
+
+
+def main():
+    if WORKER_MODE == "executor":
+        run_executor_loop()
+    elif WORKER_MODE == "dispatcher":
+        logger.info("Dispatcher mode is handled by the control-plane lease endpoint; sleeping as health monitor.")
+        while True:
+            time.sleep(POLL_INTERVAL)
+    else:
+        run_singlehost_loop()
 
 
 if __name__ == "__main__":

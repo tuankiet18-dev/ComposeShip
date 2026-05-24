@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -15,6 +16,8 @@ from config import (
     CONTAINER_CPU_LIMIT,
     CONTAINER_MEMORY_LIMIT,
     ENABLE_POST_START_COMMANDS,
+    EXECUTION_NODE_BIND_HOST,
+    EXECUTION_NODE_PRIVATE_HOST,
     TRAEFIK_DOMAIN,
     TRAEFIK_NETWORK,
 )
@@ -78,6 +81,12 @@ def _run(command: list[str], cwd: str | None = None, timeout: int = 900) -> str:
     if completed.returncode != 0:
         raise RuntimeError(f"Command failed ({completed.returncode}): {' '.join(command)}\n{output}")
     return output
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", 0))
+        return int(sock.getsockname()[1])
 
 
 def ensure_compose_available() -> str:
@@ -318,6 +327,7 @@ def prepare_compose_file(
     compose_project_name: str,
     routes: list[dict[str, Any]],
     env_vars: list[dict[str, Any]],
+    expose_route_ports: bool = False,
 ) -> tuple[str, list[str]]:
     sanitize_logs: list[str] = []
     with open(compose_file, "r", encoding="utf-8") as f:
@@ -402,12 +412,24 @@ def prepare_compose_file(
         }
         service.setdefault("mem_limit", CONTAINER_MEMORY_LIMIT)
         service.setdefault("cpus", str(CONTAINER_CPU_LIMIT))
+        service.setdefault("pids_limit", int(os.getenv("CONTAINER_PIDS_LIMIT", "256")))
 
         if service_name in route_services:
             networks = _service_networks(service)
             alias = f"{compose_project_name}-{_slug(service_name)}"
             networks["oneclick-public"] = {"aliases": [alias]}
             service["networks"] = networks
+            if expose_route_ports:
+                service["ports"] = [
+                    {
+                        "target": int(route["internalPort"]),
+                        "published": _find_free_port(),
+                        "host_ip": EXECUTION_NODE_BIND_HOST,
+                        "protocol": "tcp",
+                    }
+                    for route in routes
+                    if route["serviceName"] == service_name
+                ]
 
     output_path = os.path.join(source_path, ".oneclick.compose.yml")
     with open(output_path, "w", encoding="utf-8") as f:
@@ -468,6 +490,44 @@ def write_traefik_routes(compose_project_name: str, project_name: str, routes: l
         with open(_config_path(compose_project_name, route_slug), "w", encoding="utf-8") as f:
             yaml.safe_dump(config, f, sort_keys=False)
     return public_urls
+
+
+def build_execution_node_route_targets(
+    compose_project_name: str,
+    project_name: str,
+    routes: list[dict[str, Any]],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    public_urls: list[str] = []
+    route_targets: list[dict[str, Any]] = []
+    target_host = EXECUTION_NODE_PRIVATE_HOST
+    if not target_host:
+        raise RuntimeError("EXECUTION_NODE_PRIVATE_HOST is required for multi-node Compose routing.")
+
+    for route in routes:
+        route_slug = _slug(route["routeSlug"])
+        service_name = route["serviceName"]
+        internal_port = int(route["internalPort"])
+        host = f"{route_slug}-{_slug(project_name)}.{TRAEFIK_DOMAIN}"
+        public_url = f"http://{host}"
+        public_urls.append(public_url)
+        port_output = _run(
+            ["docker", "compose", "-p", compose_project_name, "port", service_name, str(internal_port)],
+            timeout=30,
+        ).strip()
+        if not port_output:
+            raise RuntimeError(f"Could not resolve published port for route '{route_slug}' on service '{service_name}'.")
+        published_port = int(port_output.rsplit(":", 1)[-1])
+        route_targets.append(
+            {
+                "host": host,
+                "targetUrl": f"http://{target_host}:{published_port}",
+                "publicUrl": public_url,
+                "serviceName": service_name,
+                "routeSlug": route_slug,
+                "internalPort": internal_port,
+            }
+        )
+    return public_urls, route_targets
 
 
 def remove_traefik_routes(compose_project_name: str):
@@ -549,8 +609,10 @@ def deploy_compose_stack(
     routes: list[dict[str, Any]],
     env_vars: list[dict[str, Any]],
     post_start_commands: str | None,
-) -> tuple[list[str], str]:
+    route_mode: str = "singlehost",
+) -> tuple[list[str], str, list[dict[str, Any]]]:
     ensure_compose_available()
+    expose_route_ports = route_mode == "execution-node"
     sanitized_file, sanitize_logs = prepare_compose_file(
         compose_file,
         source_path,
@@ -559,6 +621,7 @@ def deploy_compose_stack(
         compose_project_name,
         routes,
         env_vars,
+        expose_route_ports=expose_route_ports,
     )
     logs = []
     logs.append(f"Prepared sanitized compose file: {sanitized_file}")
@@ -569,10 +632,14 @@ def deploy_compose_stack(
     _assert_stack_running(compose_project_name)
     _run_post_start_commands(compose_project_name, post_start_commands)
     _assert_stack_running(compose_project_name)
-    public_urls = write_traefik_routes(compose_project_name, project_name, routes)
+    if route_mode == "execution-node":
+        public_urls, route_targets = build_execution_node_route_targets(compose_project_name, project_name, routes)
+    else:
+        public_urls = write_traefik_routes(compose_project_name, project_name, routes)
+        route_targets = []
     if not public_urls:
-        raise RuntimeError("No public Traefik routes were created.")
-    return public_urls, "\n".join(logs)
+        raise RuntimeError("No public routes were created.")
+    return public_urls, "\n".join(logs), route_targets
 
 
 def cleanup_compose_stack(compose_project_name: str, remove_volumes: bool):

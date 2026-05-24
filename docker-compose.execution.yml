@@ -1,0 +1,42 @@
+name: oneclick-execution
+
+services:
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      WORKER_MODE: executor
+      CONTROL_PLANE_API_URL: ${CONTROL_PLANE_API_URL:-}
+      EXECUTION_NODE_ID: ${EXECUTION_NODE_ID:-}
+      EXECUTION_NODE_NAME: ${EXECUTION_NODE_NAME:-execution-node-1}
+      EXECUTION_NODE_TOKEN: ${EXECUTION_NODE_TOKEN:-}
+      EXECUTION_NODE_REGISTRATION_TOKEN: ${EXECUTION_NODE_REGISTRATION_TOKEN:-}
+      EXECUTION_NODE_PRIVATE_HOST: ${EXECUTION_NODE_PRIVATE_HOST:-}
+      EXECUTION_NODE_BIND_HOST: ${EXECUTION_NODE_BIND_HOST:-0.0.0.0}
+      EXECUTION_NODE_ARCHITECTURE: ${EXECUTION_NODE_ARCHITECTURE:-unknown}
+      EXECUTION_NODE_LABELS: ${EXECUTION_NODE_LABELS:-}
+      POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
+      BUILD_TIMEOUT: ${WORKER_BUILD_TIMEOUT:-900}
+      MAX_CONCURRENT_BUILDS: ${MAX_CONCURRENT_BUILDS:-1}
+      WORKSPACE_DIR: ${WORKSPACE_DIR:-/tmp/oneclick-workspace}
+      TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-localhost}
+      TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-oneclick-execution_user-net}
+      CONTAINER_MEMORY_LIMIT: ${CONTAINER_MEMORY_LIMIT:-256m}
+      CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-0.5}
+      CONTAINER_PIDS_LIMIT: ${CONTAINER_PIDS_LIMIT:-256}
+      LOG_MAX_BYTES: ${LOG_MAX_BYTES:-200000}
+      ONECLICK_ENABLE_POST_START_COMMANDS: ${ONECLICK_ENABLE_POST_START_COMMANDS:-false}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - worker_workspace:/tmp/oneclick-workspace
+    networks:
+      - user-net
+
+volumes:
+  worker_workspace:
+
+networks:
+  user-net:
+    driver: bridge
