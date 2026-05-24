@@ -176,3 +176,23 @@ make fixture-config
 
 Các lệnh này kiểm tra backend build, worker tests, frontend lint/build, compose
 config control-plane, compose config execution-node và compose config fixture.
+
+## 10. Troubleshooting Local Build
+
+Nếu `docker compose up --build` lỗi ở bước pull metadata, ví dụ:
+
+```text
+failed to resolve source metadata for mcr.microsoft.com/dotnet/aspnet:10.0
+failed to do request: Head "...": EOF
+```
+
+Đây thường là lỗi kết nối tạm thời từ Docker/BuildKit tới registry, không phải lỗi
+code. Chạy trước:
+
+```bash
+make pull-base-images
+docker compose up -d --build
+```
+
+Với local dev nên dùng `-d`; nếu không, `docker compose up --build` sẽ attach vào
+logs và trông như bị treo dù service đã chạy.
