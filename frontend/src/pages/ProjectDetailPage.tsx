@@ -1,6 +1,7 @@
-import { ArrowLeft, ExternalLink, Loader2, Play, Plus, ServerCog, Square, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Play, Plus, ServerCog, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ComposeStackPanel } from "@/components/app/ComposeStackPanel";
 import { PageHeader } from "@/components/app/PageHeader";
 import { StatusBadge } from "@/components/app/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -261,41 +262,15 @@ export function ProjectDetailPage() {
           )}
         </TabsContent>
         <TabsContent value="compose">
-          <Card>
-            <CardHeader>
-              <CardTitle>Compose stack</CardTitle>
-              <CardDescription>Saved routes and deployment history for the project-level stack.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Info label="Repository" value={project.composeConfig?.repoUrl || "Not configured"} />
-                <Info label="Branch" value={project.composeConfig?.branch || "main"} />
-                <Info label="Compose file" value={project.composeConfig?.composeFile || "docker-compose.yml"} />
-                <Info label="Routes" value={String(project.composeConfig?.routes.length || 0)} />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => runProjectAction("stop")} disabled={pendingAction === "stop-stack"}>
-                  {pendingAction === "stop-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-                  Stop stack
-                </Button>
-                <Button onClick={() => runProjectAction("deploy")} disabled={pendingAction === "deploy-stack"}>
-                  {pendingAction === "deploy-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  Deploy stack
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ComposeStackPanel
+            project={project}
+            projectId={projectId}
+            pendingAction={pendingAction}
+            onProjectChanged={loadProject}
+            onRunProjectAction={runProjectAction}
+          />
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium">{value}</p>
     </div>
   );
 }

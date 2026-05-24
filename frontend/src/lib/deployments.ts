@@ -21,6 +21,8 @@ export type AppDeployment = {
   errorMessage?: string | null;
   hasAiDiagnosis?: boolean;
   hasDiagnosticSnapshot?: boolean;
+  executionNodeName?: string | null;
+  failureCategory?: string | null;
 };
 
 const byNewest = (a: AppDeployment, b: AppDeployment) =>
@@ -85,6 +87,8 @@ export async function collectDeployments(projects?: ProjectSummary[]) {
         completedAt: deployment.completedAt,
         createdAt: deployment.createdAt,
         errorMessage: deployment.errorMessage,
+        executionNodeName: deployment.executionNodeName,
+        failureCategory: deployment.failureCategory,
       });
     });
 

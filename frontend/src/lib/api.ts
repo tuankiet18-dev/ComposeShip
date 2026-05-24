@@ -336,6 +336,18 @@ export type ProjectDeployment = {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  executionNodeName: string | null;
+  failureCategory: string | null;
+  routeTargets: RouteTarget[];
+};
+
+export type RouteTarget = {
+  id: string;
+  host: string;
+  targetUrl: string;
+  status: string;
+  executionNodeName: string | null;
+  updatedAt: string;
 };
 
 export type AiDiagnosis = {
