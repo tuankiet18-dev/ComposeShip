@@ -160,18 +160,10 @@ resource "aws_security_group" "control_plane" {
   }
 
   ingress {
-    description = "Execution-node to API on private IP"
-    from_port   = 5000
-    to_port     = 5000
-    protocol    = "tcp"
-    cidr_blocks = [local.private_cidr]
-  }
-
-  ingress {
-    description = "Execution-node private return traffic"
-    from_port   = 1024
-    to_port     = 65535
-    protocol    = "tcp"
+    description = "Private subnet traffic for NAT and control-plane API"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = [local.private_cidr]
   }
 
