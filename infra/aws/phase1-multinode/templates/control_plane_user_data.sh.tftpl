@@ -74,6 +74,7 @@ log "Adding production phase-one control-plane overrides"
 cat >> .generated/multinode/control-plane.env <<'ENVEOF'
 WORKER_MODE=dispatcher
 ASPNETCORE_ENVIRONMENT=Production
+AUTH_COOKIE_SECURE=false
 AUTO_MIGRATE_DATABASE=true
 WORKER_BUILD_TIMEOUT=${worker_build_timeout}
 MAX_CONCURRENT_BUILDS=${max_concurrent_builds}

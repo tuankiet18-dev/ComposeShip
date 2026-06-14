@@ -51,6 +51,7 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-oneclick-host}
       Jwt__Audience: ${JWT_AUDIENCE:-oneclick-host-client}
       Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-24}
+      Auth__CookieSecure: ${AUTH_COOKIE_SECURE:-true}
       AI__Provider: ${AI_PROVIDER:-OpenAI}
       AI__ApiKey: ${AI_API_KEY:-}
       AI__Model: ${AI_MODEL:-gpt-4o-mini}

@@ -89,8 +89,16 @@ public class AuthController : ControllerBase
     private CookieOptions CreateCookieOptions() => new()
     {
         HttpOnly = true,
-        Secure = !_environment.IsDevelopment(),
+        Secure = ShouldUseSecureCookie(),
         SameSite = SameSiteMode.Lax,
         Path = "/"
     };
+
+    private bool ShouldUseSecureCookie()
+    {
+        var configured = _configuration["Auth:CookieSecure"];
+        return bool.TryParse(configured, out var cookieSecure)
+            ? cookieSecure
+            : !_environment.IsDevelopment();
+    }
 }
