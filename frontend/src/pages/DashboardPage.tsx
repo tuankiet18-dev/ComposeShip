@@ -2,10 +2,9 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  CheckCircle2,
   Clock,
-  Cpu,
   FolderGit2,
-  Globe,
   Plus,
   Rocket,
 } from "lucide-react";
@@ -79,13 +78,13 @@ export function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Welcome back, ${user?.fullName?.split(" ")[0] || "there"}`}
-        description="Here's what's running today. Everything is organized around projects, services, and deployments."
+        title={`Overview${user?.fullName ? ` for ${user.fullName.split(" ")[0]}` : ""}`}
+        description="Start from Projects to configure a repo, deploy the stack, then use Activity & logs when something needs debugging."
         actions={
           <>
             <Button variant="outline" asChild>
               <Link to="/deployments">
-                <Activity className="h-4 w-4" /> View logs
+                <Activity className="h-4 w-4" /> Activity & logs
               </Link>
             </Button>
             <Button asChild>
@@ -111,12 +110,62 @@ export function DashboardPage() {
         ))}
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <section className="rounded-lg border border-border bg-card p-4">
+        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Primary workflow</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Use this order when you want to verify a deploy end to end.</p>
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/projects">
+              Open projects <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[
+            { label: "Create", detail: "New project or fixture", to: "/projects/new" },
+            { label: "Configure", detail: "Compose source, routes, env", to: "/projects" },
+            { label: "Deploy", detail: "Queue on execution node", to: "/projects" },
+            { label: "Observe", detail: "Logs, events, route targets", to: "/deployments" },
+          ].map((step, index) => (
+            <Link key={step.label} to={step.to} className="rounded-md border border-border bg-background p-3 transition-colors hover:border-primary/40">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                  {index + 1}
+                </span>
+                <span className="text-sm font-medium">{step.label}</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{step.detail}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Recent deployments</h2>
+            <h2 className="text-sm font-semibold">Recent projects</h2>
+            <Link to="/projects" className="text-xs font-medium text-primary hover:underline">View all</Link>
+          </div>
+          {projects.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
+              No projects yet. Create one first, then configure the Compose stack from its project page.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {projects.slice(0, 4).map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Activity snapshot</h2>
             <Link to="/deployments" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              View all <ArrowRight className="h-3.5 w-3.5" />
+              Logs <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <Card>
@@ -129,50 +178,17 @@ export function DashboardPage() {
                 </div>
               ) : recentDeployments.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-                  No deployments yet. Create a project and deploy a service to populate this timeline.
+                  Deployment history appears here after the first deploy.
                 </div>
               ) : (
                 <DeploymentTimeline items={recentDeployments} />
               )}
             </CardContent>
           </Card>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <h2 className="mb-3 text-sm font-semibold">System status</h2>
-            <div className="space-y-2 rounded-xl border border-border bg-card p-4">
-              <StatusRow icon={Cpu} label="API status" value={loading ? "Checking" : "Connected"} />
-              <StatusRow icon={Globe} label="Projects indexed" value={`${projects.length} total`} />
-              <StatusRow icon={Activity} label="Queue depth" value={`${stats[3].value} active jobs`} />
-            </div>
+          <div className="mt-3 rounded-lg border border-border bg-card p-4">
+            <StatusRow icon={CheckCircle2} label="API" value={loading ? "Checking" : "Connected"} />
+            <StatusRow icon={Activity} label="Queue" value={`${stats[3].value} active`} />
           </div>
-          <div>
-            <h2 className="mb-3 text-sm font-semibold">Quick actions</h2>
-            <div className="grid gap-2">
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/projects/new"><Plus className="h-4 w-4" /> Create new project</Link>
-              </Button>
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/projects"><FolderGit2 className="h-4 w-4" /> Browse projects</Link>
-              </Button>
-              <Button variant="outline" className="justify-start" asChild>
-                <Link to="/deployments"><Rocket className="h-4 w-4" /> See all deployments</Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Recent projects</h2>
-          <Link to="/projects" className="text-xs font-medium text-primary hover:underline">View all</Link>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {projects.slice(0, 3).map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
         </div>
       </section>
     </div>

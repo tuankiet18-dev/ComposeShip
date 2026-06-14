@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<EnvironmentVariable> EnvironmentVariables => Set<EnvironmentVariable>();
     public DbSet<ExecutionNode> ExecutionNodes => Set<ExecutionNode>();
     public DbSet<RouteTarget> RouteTargets => Set<RouteTarget>();
+    public DbSet<ProjectEvent> ProjectEvents => Set<ProjectEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +54,11 @@ public class AppDbContext : DbContext
             e.HasMany(p => p.RouteTargets)
              .WithOne(r => r.Project)
              .HasForeignKey(r => r.ProjectId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasMany(p => p.Events)
+             .WithOne(ev => ev.Project)
+             .HasForeignKey(ev => ev.ProjectId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -128,6 +134,11 @@ public class AppDbContext : DbContext
              .HasForeignKey(r => r.ProjectDeploymentId)
              .OnDelete(DeleteBehavior.SetNull);
 
+            e.HasMany(d => d.Events)
+             .WithOne(ev => ev.Deployment)
+             .HasForeignKey(ev => ev.DeploymentId)
+             .OnDelete(DeleteBehavior.SetNull);
+
             e.HasIndex(d => new { d.Status, d.NextRunAt, d.CreatedAt });
         });
 
@@ -135,6 +146,10 @@ public class AppDbContext : DbContext
         {
             e.HasIndex(n => n.Name).IsUnique();
             e.Property(n => n.LabelsJson).HasColumnType("jsonb");
+            e.HasMany(n => n.Events)
+             .WithOne(ev => ev.ExecutionNode)
+             .HasForeignKey(ev => ev.ExecutionNodeId)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<RouteTarget>(e =>
@@ -145,6 +160,18 @@ public class AppDbContext : DbContext
              .WithMany(n => n.RouteTargets)
              .HasForeignKey(r => r.ExecutionNodeId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasMany(r => r.Events)
+             .WithOne(ev => ev.RouteTarget)
+             .HasForeignKey(ev => ev.RouteTargetId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ProjectEvent>(e =>
+        {
+            e.Property(ev => ev.MetadataJson).HasColumnType("jsonb");
+            e.HasIndex(ev => new { ev.ProjectId, ev.CreatedAt });
+            e.HasIndex(ev => ev.Type);
         });
     }
 }

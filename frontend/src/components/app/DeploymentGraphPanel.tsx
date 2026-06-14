@@ -275,11 +275,13 @@ function GraphCanvas({
   onSelect: (id: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const viewRef = useRef<ViewState>({ x: 28, y: 32, scale: 0.86 });
+  const initialScale = graph.nodes.length > 4 ? 0.38 : 0.78;
+  const initialX = graph.nodes.length > 4 ? -120 : 18;
+  const viewRef = useRef<ViewState>({ x: initialX, y: 24, scale: initialScale });
   const draggedNodeRef = useRef<{ id: string; offset: Point } | null>(null);
   const pointerRef = useRef<Point | null>(null);
   const autoPanFrameRef = useRef<number | null>(null);
-  const [view, setView] = useState<ViewState>({ x: 28, y: 32, scale: 0.86 });
+  const [view, setView] = useState<ViewState>({ x: initialX, y: 24, scale: initialScale });
   const [draggedNode, setDraggedNode] = useState<{ id: string; offset: Point } | null>(null);
   const [panning, setPanning] = useState<Point | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -388,7 +390,7 @@ function GraphCanvas({
   };
 
   const resetView = () => {
-    setView({ x: 28, y: 32, scale: graph.nodes.length > 8 ? 0.74 : 0.86 });
+    setView({ x: graph.nodes.length > 4 ? -120 : 18, y: 24, scale: graph.nodes.length > 4 ? 0.38 : 0.78 });
     setManualPositions({});
   };
 
@@ -396,7 +398,11 @@ function GraphCanvas({
     const next = !isFullscreen;
     setIsFullscreen(next);
     window.requestAnimationFrame(() => {
-      setView({ x: next ? 72 : 28, y: next ? 80 : 32, scale: next ? (graph.nodes.length > 8 ? 0.86 : 1) : graph.nodes.length > 8 ? 0.74 : 0.86 });
+      setView({
+        x: next ? 72 : graph.nodes.length > 4 ? -120 : 18,
+        y: next ? 80 : 24,
+        scale: next ? (graph.nodes.length > 8 ? 0.72 : 0.9) : graph.nodes.length > 4 ? 0.38 : 0.78,
+      });
     });
   };
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.ExecutionNodes;
@@ -16,12 +17,14 @@ public class ExecutionNodeService
     private readonly AppDbContext _db;
     private readonly SecretEncryptionService _secrets;
     private readonly IConfiguration _configuration;
+    private readonly ProjectEventService _events;
 
-    public ExecutionNodeService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration)
+    public ExecutionNodeService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration, ProjectEventService events)
     {
         _db = db;
         _secrets = secrets;
         _configuration = configuration;
+        _events = events;
     }
 
     public async Task<ExecutionNodeResponse> RegisterAsync(RegisterExecutionNodeRequest request)
@@ -48,6 +51,7 @@ public class ExecutionNodeService
         node.LastHeartbeatAt = DateTime.UtcNow;
         node.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await RestoreOfflineRoutesForRecoveredNodeAsync(node);
         return ToNodeResponse(node);
     }
 
@@ -73,14 +77,20 @@ public class ExecutionNodeService
         node.LastHeartbeatAt = DateTime.UtcNow;
         node.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await RestoreOfflineRoutesForRecoveredNodeAsync(node);
         return ToNodeResponse(node);
     }
 
     public async Task<LeaseResponse> LeaseAsync(ExecutionNode node, LeaseRequest request)
     {
+        UpdateNodeFromLeaseRequest(node, request);
+        await RestoreOfflineRoutesForRecoveredNodeAsync(node);
         await RecoverExpiredLeasesAsync();
         if (node.Status != "active")
+        {
+            await _db.SaveChangesAsync();
             return new LeaseResponse(false, null, null, null);
+        }
 
         var availableSlots = Math.Min(Math.Max(0, request.AvailableSlots), Math.Max(0, node.MaxConcurrentBuilds - node.CurrentBuilds));
         if (availableSlots <= 0)
@@ -97,6 +107,20 @@ public class ExecutionNodeService
 
         if (composeDeployment is not null)
         {
+            List<ComposeEnvVarResponse> environmentVariables;
+            try
+            {
+                environmentVariables = ReadEnvVars(composeDeployment.Project.ComposeEnvJson)
+                    .Select(ev => ev with { Value = _secrets.Decrypt(ev.Value) })
+                    .ToList();
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException or InvalidOperationException)
+            {
+                await MarkDeploymentLeasePreparationFailedAsync(composeDeployment, node, now, ex);
+                await transaction.CommitAsync();
+                return new LeaseResponse(false, null, null, null);
+            }
+
             composeDeployment.Status = "cloning";
             composeDeployment.LockedByNodeId = node.Id;
             composeDeployment.LockedAt = now;
@@ -107,6 +131,18 @@ public class ExecutionNodeService
             node.CurrentBuilds += 1;
             node.UpdatedAt = now;
             await _db.SaveChangesAsync();
+            await _events.AddAsync(
+                composeDeployment.ProjectId,
+                "redeploy.started",
+                "info",
+                $"Deployment v{composeDeployment.Version} started on execution node {node.Name}.",
+                composeDeployment.Id,
+                node.Id,
+                metadata: new Dictionary<string, string>
+                {
+                    ["executionNode"] = node.Name,
+                    ["version"] = composeDeployment.Version.ToString()
+                });
             await transaction.CommitAsync();
 
             var project = composeDeployment.Project;
@@ -120,13 +156,48 @@ public class ExecutionNodeService
                 project.ComposeFile,
                 project.ComposeProjectName ?? ToComposeProjectName(project.Id, project.Name),
                 ReadRoutes(project.ComposeRoutesJson),
-                ReadEnvVars(project.ComposeEnvJson).Select(ev => ev with { Value = _secrets.Decrypt(ev.Value) }).ToList(),
+                environmentVariables,
                 project.ComposePostStartCommands
             ), null);
         }
 
         await transaction.CommitAsync();
         return new LeaseResponse(false, null, null, null);
+    }
+
+    private async Task MarkDeploymentLeasePreparationFailedAsync(
+        ProjectDeployment deployment,
+        ExecutionNode node,
+        DateTime now,
+        Exception ex)
+    {
+        const string message = "Deployment could not start because stored environment secrets cannot be decrypted. Re-save the Compose configuration or reset the local database with the current ONECLICK_SECRET_KEY.";
+
+        deployment.Status = "failed";
+        deployment.ErrorMessage = message;
+        deployment.BuildLogs = message;
+        deployment.FailureCategory = "configuration_error";
+        deployment.CompletedAt = now;
+        deployment.HeartbeatAt = now;
+        deployment.LockedByNodeId = null;
+        deployment.LockedAt = null;
+        deployment.Project.Status = "failed";
+        deployment.Project.UpdatedAt = now;
+        node.CurrentBuilds = Math.Max(0, node.CurrentBuilds);
+        node.UpdatedAt = now;
+
+        await _events.AddAsync(
+            deployment.ProjectId,
+            "redeploy.failed",
+            "error",
+            message,
+            deployment.Id,
+            node.Id,
+            metadata: new Dictionary<string, string>
+            {
+                ["failureCategory"] = "configuration_error",
+                ["exception"] = ex.GetType().Name
+            });
     }
 
     public async Task RecordEventAsync(ExecutionNode node, Guid deploymentId, DeploymentEventRequest request)
@@ -145,6 +216,7 @@ public class ExecutionNodeService
         deployment.ErrorMessage = request.ErrorMessage;
         deployment.FailureCategory = request.FailureCategory;
         deployment.HeartbeatAt = now;
+        node.LastHeartbeatAt = now;
         if (request.PublicUrls is not null)
             deployment.PublicUrlsJson = JsonSerializer.Serialize(request.PublicUrls, JsonOptions);
 
@@ -159,10 +231,35 @@ public class ExecutionNodeService
             deployment.Project.Status = "live";
             deployment.Project.ComposeLiveUrlsJson = deployment.PublicUrlsJson;
             await SupersedePreviousProjectDeploymentsAsync(deployment.ProjectId, deployment.Id);
+            await _events.AddAsync(
+                deployment.ProjectId,
+                "redeploy.succeeded",
+                "info",
+                $"Deployment v{deployment.Version} completed successfully.",
+                deployment.Id,
+                node.Id,
+                metadata: new Dictionary<string, string>
+                {
+                    ["executionNode"] = node.Name,
+                    ["version"] = deployment.Version.ToString()
+                });
         }
         else if (request.Status == "failed")
         {
             deployment.Project.Status = "failed";
+            await _events.AddAsync(
+                deployment.ProjectId,
+                "redeploy.failed",
+                "error",
+                request.ErrorMessage ?? $"Deployment v{deployment.Version} failed.",
+                deployment.Id,
+                node.Id,
+                metadata: new Dictionary<string, string>
+                {
+                    ["executionNode"] = node.Name,
+                    ["version"] = deployment.Version.ToString(),
+                    ["failureCategory"] = request.FailureCategory ?? ""
+                });
         }
 
         deployment.Project.UpdatedAt = now;
@@ -180,6 +277,7 @@ public class ExecutionNodeService
         {
             target.Status = "stale";
             target.UpdatedAt = now;
+            RemoveTraefikRoute(target);
         }
 
         var routeTarget = new RouteTarget
@@ -196,8 +294,93 @@ public class ExecutionNodeService
         };
         _db.RouteTargets.Add(routeTarget);
         await _db.SaveChangesAsync();
-        WriteTraefikRoute(routeTarget);
+        foreach (var target in activeTargets)
+        {
+            await _events.AddAsync(
+                target.ProjectId,
+                "route.stale",
+                "info",
+                $"Previous route target for {target.Host} was marked stale.",
+                target.ProjectDeploymentId,
+                target.ExecutionNodeId,
+                target.Id,
+                new Dictionary<string, string>
+                {
+                    ["host"] = target.Host,
+                    ["targetUrl"] = target.TargetUrl
+                });
+        }
+
+        if (routeTarget.Status == "active")
+        {
+            WriteTraefikRoute(routeTarget);
+            await _events.AddAsync(
+                routeTarget.ProjectId,
+                "route.active",
+                "info",
+                $"Route {routeTarget.Host} is active on execution node {node.Name}.",
+                routeTarget.ProjectDeploymentId,
+                node.Id,
+                routeTarget.Id,
+                new Dictionary<string, string>
+                {
+                    ["host"] = routeTarget.Host,
+                    ["targetUrl"] = routeTarget.TargetUrl,
+                    ["executionNode"] = node.Name
+                });
+        }
         return new RouteTargetResponse(routeTarget.Id, routeTarget.Host, routeTarget.TargetUrl, routeTarget.Status, node.Name, routeTarget.UpdatedAt);
+    }
+
+    private static void UpdateNodeFromLeaseRequest(ExecutionNode node, LeaseRequest request)
+    {
+        node.LastHeartbeatAt = DateTime.UtcNow;
+        node.CurrentBuilds = Math.Max(0, request.CurrentBuilds ?? node.CurrentBuilds);
+        if (!string.IsNullOrWhiteSpace(request.Status) && request.Status is "active" or "draining" or "offline")
+            node.Status = request.Status;
+        node.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private async Task RestoreOfflineRoutesForRecoveredNodeAsync(ExecutionNode node)
+    {
+        if (node.Status != "active")
+            return;
+
+        var now = DateTime.UtcNow;
+        var targets = await _db.RouteTargets
+            .Include(r => r.Project)
+            .Where(r => r.ExecutionNodeId == node.Id && r.Status == "offline")
+            .ToListAsync();
+
+        foreach (var target in targets)
+        {
+            target.Status = "active";
+            target.UpdatedAt = now;
+            target.Project.Status = "live";
+            target.Project.UpdatedAt = now;
+            WriteTraefikRoute(target);
+            _db.ProjectEvents.Add(new ProjectEvent
+            {
+                ProjectId = target.ProjectId,
+                DeploymentId = target.ProjectDeploymentId,
+                ExecutionNodeId = node.Id,
+                RouteTargetId = target.Id,
+                Type = "route.active",
+                Severity = "info",
+                Message = $"Route {target.Host} is active again because execution node {node.Name} recovered.",
+                MetadataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["host"] = target.Host,
+                    ["targetUrl"] = target.TargetUrl,
+                    ["executionNode"] = node.Name,
+                    ["source"] = "node-recovered"
+                }, JsonOptions),
+                CreatedAt = now
+            });
+        }
+
+        if (targets.Count > 0)
+            await _db.SaveChangesAsync();
     }
 
     private async Task RecoverExpiredLeasesAsync()
@@ -211,15 +394,37 @@ public class ExecutionNodeService
 
         foreach (var deployment in expired)
         {
+            var lockedByNodeId = deployment.LockedByNodeId;
             deployment.RetryCount += 1;
             deployment.LockedByNodeId = null;
             deployment.LockedAt = null;
             deployment.HeartbeatAt = null;
-            deployment.Status = deployment.RetryCount >= maxRetries ? "failed" : "queued";
-            deployment.FailureCategory = deployment.RetryCount >= maxRetries ? "platform" : deployment.FailureCategory;
-            deployment.NextRunAt = deployment.RetryCount >= maxRetries ? null : DateTime.UtcNow.AddSeconds(RetryDelaySeconds());
-            if (deployment.Status == "failed")
+            var exhaustedRetries = deployment.RetryCount >= maxRetries;
+            deployment.Status = exhaustedRetries ? "failed" : "queued";
+            deployment.FailureCategory = exhaustedRetries ? "platform" : deployment.FailureCategory;
+            deployment.NextRunAt = exhaustedRetries ? null : DateTime.UtcNow.AddSeconds(RetryDelaySeconds());
+            if (exhaustedRetries)
+            {
+                deployment.ErrorMessage ??= "Deployment did not start cleanly after multiple lease attempts. Check control-plane API logs and project configuration.";
+                deployment.BuildLogs = TruncateLog(string.IsNullOrWhiteSpace(deployment.BuildLogs) ? deployment.ErrorMessage : deployment.BuildLogs);
+                deployment.CompletedAt ??= DateTime.UtcNow;
                 deployment.Project.Status = "failed";
+                _db.ProjectEvents.Add(new ProjectEvent
+                {
+                    ProjectId = deployment.ProjectId,
+                    DeploymentId = deployment.Id,
+                    ExecutionNodeId = lockedByNodeId,
+                    Type = "redeploy.failed",
+                    Severity = "error",
+                    Message = deployment.ErrorMessage,
+                    MetadataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+                    {
+                        ["failureCategory"] = "platform",
+                        ["retryCount"] = deployment.RetryCount.ToString()
+                    }, JsonOptions),
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
         }
 
         if (expired.Count > 0)
@@ -269,6 +474,20 @@ public class ExecutionNodeService
         };
         var serializer = new SerializerBuilder().Build();
         File.WriteAllText(Path.Combine(dynamicDir, $"{routerName}.yml"), serializer.Serialize(config));
+    }
+
+    private void RemoveTraefikRoute(RouteTarget target)
+    {
+        var dynamicDir = _configuration["Traefik:DynamicDirectory"]
+            ?? _configuration["TRAEFIK_DYNAMIC_DIR"]
+            ?? "/etc/traefik/dynamic";
+        if (!Directory.Exists(dynamicDir))
+            return;
+
+        var routerName = SafeFileName.Replace($"node-{target.Host}", "-").Trim('-');
+        var path = Path.Combine(dynamicDir, $"{routerName}.yml");
+        if (File.Exists(path))
+            File.Delete(path);
     }
 
     private static ExecutionNodeResponse ToNodeResponse(ExecutionNode node) => new(

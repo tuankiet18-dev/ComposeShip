@@ -7,6 +7,9 @@ export DEBIAN_FRONTEND=noninteractive
 DEPLOYMENT_PATH="${deployment_path}"
 REPOSITORY_URL="${repository_url}"
 REPOSITORY_REF="${repository_ref}"
+METADATA_TOKEN="$(curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")"
+INSTANCE_ID="$(curl -fsS -H "X-aws-ec2-metadata-token: $METADATA_TOKEN" http://169.254.169.254/latest/meta-data/instance-id)"
+LOCAL_IPV4="$(curl -fsS -H "X-aws-ec2-metadata-token: $METADATA_TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)"
 
 log() {
   echo "[$(date --iso-8601=seconds)] $*"
@@ -51,15 +54,15 @@ sudo -u ubuntu git pull --ff-only origin "$REPOSITORY_REF" || true
 
 log "Writing execution-node env"
 mkdir -p .generated/multinode
-cat > .generated/multinode/execution-node.env <<'ENVEOF'
+cat > .generated/multinode/execution-node.env <<ENVEOF
 COMPOSE_PROJECT_NAME=oneclick-execution
 WORKER_MODE=executor
 CONTROL_PLANE_API_URL=http://${control_plane_private_ip}:5000/api
-EXECUTION_NODE_NAME=execution-node-1
+EXECUTION_NODE_NAME=execution-node-$INSTANCE_ID
 EXECUTION_NODE_TOKEN=${execution_node_token}
 EXECUTION_NODE_REGISTRATION_TOKEN=${execution_node_registration_token}
-EXECUTION_NODE_PRIVATE_HOST=${execution_node_private_ip}
-EXECUTION_NODE_BIND_HOST=${execution_node_private_ip}
+EXECUTION_NODE_PRIVATE_HOST=$LOCAL_IPV4
+EXECUTION_NODE_BIND_HOST=$LOCAL_IPV4
 EXECUTION_NODE_ARCHITECTURE=arm64
 EXECUTION_NODE_LABELS=aws,ap-southeast-1,private-network,phase-one
 TRAEFIK_DOMAIN=${domain_name}

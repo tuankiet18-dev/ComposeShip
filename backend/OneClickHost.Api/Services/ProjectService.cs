@@ -13,6 +13,7 @@ public class ProjectService
     private const string SecretMask = "********";
     private const string TraefikExposure = "traefik";
     private const string CloudflareQuickExposure = "cloudflare_quick";
+    private static readonly Regex SafeFileName = new("[^a-zA-Z0-9.-]+", RegexOptions.Compiled);
     private static readonly HashSet<string> ComposeExposureProviders = [TraefikExposure, CloudflareQuickExposure];
     private static readonly string[] ComposeFileCandidates = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];
     private static readonly HttpClient ComposeHttpClient = new()
@@ -24,12 +25,14 @@ public class ProjectService
     private readonly AppDbContext _db;
     private readonly SecretEncryptionService _secrets;
     private readonly IConfiguration _configuration;
+    private readonly ProjectEventService _events;
 
-    public ProjectService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration)
+    public ProjectService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration, ProjectEventService events)
     {
         _db = db;
         _secrets = secrets;
         _configuration = configuration;
+        _events = events;
     }
 
     public async Task<List<ProjectResponse>> GetUserProjectsAsync(Guid userId)
@@ -57,9 +60,10 @@ public class ProjectService
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
+        var stateful = await BuildStatefulMetadataForProjectAsync(project);
         return new ProjectDetailResponse(
             project.Id, project.Name, project.Description, project.Status, project.DeploymentMode,
-            ToComposeConfigResponse(project),
+            ToComposeConfigResponse(project, stateful),
             project.ProjectDeployments.Select(ToProjectDeploymentResponse).ToList(),
             project.Services.Where(s => s.Status != "deleting").Select(s => new ProjectServiceSummary(
                 s.Id, s.Name, s.ServiceType, s.ExposureProvider, s.DetectedStack, s.Status, s.LiveUrl
@@ -123,12 +127,13 @@ public class ProjectService
         // Environment variables are intentionally not auto-filled. The same
         // key can belong to multiple services with different values, so users
         // should enter them explicitly in the UI.
-        return new ComposeInspectResponse(resolvedComposeFile, services, suggestedRoutes, []);
+        return new ComposeInspectResponse(resolvedComposeFile, services, suggestedRoutes, [], DetectStatefulMetadata(yamlContent));
     }
 
     public async Task<DeploymentGraphResponse> GetDeploymentGraphAsync(Guid projectId, Guid userId)
     {
         var project = await _db.Projects
+            .Include(p => p.RouteTargets.Where(r => r.Status == "active"))
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
@@ -216,7 +221,7 @@ public class ProjectService
         project.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
-        return ToComposeConfigResponse(project)!;
+        return ToComposeConfigResponse(project, StatefulUnknown())!;
     }
 
     public async Task<ProjectDeploymentResponse> TriggerProjectDeploymentAsync(Guid projectId, Guid userId)
@@ -233,6 +238,7 @@ public class ProjectService
         if (ReadRoutes(project.ComposeRoutesJson).Count == 0)
             throw new ArgumentException("At least one public Compose route is required.");
 
+        var wasUnhealthy = project.Status == "unhealthy";
         var latestVersion = project.ProjectDeployments.Any()
             ? project.ProjectDeployments.Max(d => d.Version)
             : 0;
@@ -249,6 +255,31 @@ public class ProjectService
         project.UpdatedAt = DateTime.UtcNow;
         _db.ProjectDeployments.Add(deployment);
         await _db.SaveChangesAsync();
+        await _events.AddAsync(
+            project.Id,
+            wasUnhealthy ? "redeploy.requested" : "deploy.requested",
+            "info",
+            wasUnhealthy
+                ? $"Manual redeploy v{deployment.Version} was requested for an unhealthy project."
+                : $"Deployment v{deployment.Version} was queued.",
+            deployment.Id,
+            metadata: new Dictionary<string, string> { ["version"] = deployment.Version.ToString() });
+
+        var stateful = await BuildStatefulMetadataForProjectAsync(project);
+        if (stateful.Risk != "none" && stateful.Risk != "unknown")
+        {
+            await _events.AddAsync(
+                project.Id,
+                "stateful.warning",
+                "warning",
+                "This project appears to use local state. Redeploying on another execution node may not restore local data.",
+                deployment.Id,
+                metadata: new Dictionary<string, string>
+                {
+                    ["risk"] = stateful.Risk,
+                    ["warnings"] = string.Join(" | ", stateful.Warnings)
+                });
+        }
 
         return ToProjectDeploymentResponse(deployment);
     }
@@ -291,6 +322,7 @@ public class ProjectService
 
         project.Status = "stopping";
         project.UpdatedAt = DateTime.UtcNow;
+        MarkActiveRoutesRemoved(project);
         await _db.SaveChangesAsync();
     }
 
@@ -298,6 +330,7 @@ public class ProjectService
     {
         var project = await _db.Projects
             .Include(p => p.Services)
+            .Include(p => p.RouteTargets.Where(r => r.Status == "active"))
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
@@ -311,8 +344,36 @@ public class ProjectService
             service.Status = "deleting";
             service.UpdatedAt = DateTime.UtcNow;
         }
+        MarkActiveRoutesRemoved(project);
 
         await _db.SaveChangesAsync();
+    }
+
+    private void MarkActiveRoutesRemoved(Project project)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var target in project.RouteTargets.Where(r => r.Status == "active"))
+        {
+            target.Status = "removed";
+            target.UpdatedAt = now;
+            RemoveTraefikRoute(target);
+            _db.ProjectEvents.Add(new ProjectEvent
+            {
+                ProjectId = project.Id,
+                DeploymentId = target.ProjectDeploymentId,
+                ExecutionNodeId = target.ExecutionNodeId,
+                RouteTargetId = target.Id,
+                Type = "route.removed",
+                Severity = "info",
+                Message = $"Route {target.Host} was removed from active routing.",
+                MetadataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["host"] = target.Host,
+                    ["targetUrl"] = target.TargetUrl
+                }, JsonOptions),
+                CreatedAt = now
+            });
+        }
     }
 
     private static List<ComposeRouteResponse> NormalizeRoutes(List<ComposeRouteRequest> routes)
@@ -402,6 +463,87 @@ public class ProjectService
 
         return services;
     }
+
+    private async Task<StatefulMetadataResponse> BuildStatefulMetadataForProjectAsync(Project project)
+    {
+        if (string.IsNullOrWhiteSpace(project.RepoUrl))
+            return StatefulUnknown();
+
+        try
+        {
+            var branch = string.IsNullOrWhiteSpace(project.Branch) ? "main" : project.Branch.Trim();
+            var subfolder = NormalizeRelativePath(project.Subfolder);
+            var composeFile = NormalizeRelativePath(project.ComposeFile);
+            var (owner, repo, branchFromUrl, subfolderFromUrl) = ParseGitHubRepo(project.RepoUrl);
+            if (string.IsNullOrWhiteSpace(project.Branch) && branchFromUrl is not null)
+                branch = branchFromUrl;
+            if (string.IsNullOrWhiteSpace(subfolder) && subfolderFromUrl is not null)
+                subfolder = subfolderFromUrl;
+
+            var (_, yamlContent) = await FetchComposeYamlAsync(owner, repo, branch, subfolder, composeFile);
+            return DetectStatefulMetadata(yamlContent);
+        }
+        catch
+        {
+            return StatefulUnknown();
+        }
+    }
+
+    private static StatefulMetadataResponse DetectStatefulMetadata(string yamlContent)
+    {
+        var warnings = new List<string>();
+        var hasDatabase = false;
+        var hasVolume = false;
+
+        var yaml = new YamlStream();
+        yaml.Load(new StringReader(yamlContent));
+        if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root)
+            return StatefulUnknown();
+
+        if (TryGetMapping(root, "volumes", out var rootVolumes) && rootVolumes.Children.Count > 0)
+        {
+            hasVolume = true;
+            warnings.Add("Compose defines named volumes. Data in local node volumes may not move to a replacement execution node.");
+        }
+
+        if (TryGetMapping(root, "services", out var servicesNode))
+        {
+            foreach (var serviceEntry in servicesNode.Children)
+            {
+                var serviceName = ((YamlScalarNode)serviceEntry.Key).Value?.Trim() ?? "";
+                if (serviceEntry.Value is not YamlMappingNode serviceNode)
+                    continue;
+
+                var image = TryGetScalar(serviceNode, "image") ?? "";
+                var serviceDescriptor = $"{serviceName} {image}".ToLowerInvariant();
+                if (IsStatefulInfrastructureService(serviceDescriptor))
+                {
+                    hasDatabase = true;
+                    warnings.Add($"Service '{serviceName}' looks like a database/cache service. Use an external managed service for production data.");
+                }
+
+                if (TryGetNode(serviceNode, "volumes") is YamlSequenceNode volumes && volumes.Children.Count > 0)
+                {
+                    hasVolume = true;
+                    warnings.Add($"Service '{serviceName}' mounts local or named volumes. Manual redeploy may not restore previous local data.");
+                }
+            }
+        }
+
+        var risk = hasDatabase ? "local_database" : hasVolume ? "local_volume" : "none";
+        return new StatefulMetadataResponse(risk, warnings.Distinct().ToList());
+    }
+
+    private static StatefulMetadataResponse StatefulUnknown() =>
+        new("unknown", ["Stateful risk could not be evaluated for this Compose configuration."]);
+
+    private static bool IsStatefulInfrastructureService(string value) =>
+        value.Contains("postgres")
+        || value.Contains("mysql")
+        || value.Contains("mariadb")
+        || value.Contains("redis")
+        || value.Contains("mongo")
+        || value.Contains("minio");
 
     private static bool TryGetMapping(YamlMappingNode node, string key, out YamlMappingNode value)
     {
@@ -632,6 +774,20 @@ public class ProjectService
     private static bool IsLikelyHttpPort(int port) =>
         port is 80 or 443 or 3000 or 3001 or 4173 or 5000 or 5173 or 5555 or 8000 or 8080 or 8081 or 8025;
 
+    private void RemoveTraefikRoute(RouteTarget target)
+    {
+        var dynamicDir = _configuration["Traefik:DynamicDirectory"]
+            ?? _configuration["TRAEFIK_DYNAMIC_DIR"]
+            ?? "/etc/traefik/dynamic";
+        if (!Directory.Exists(dynamicDir))
+            return;
+
+        var routerName = SafeFileName.Replace($"node-{target.Host}", "-").Trim('-');
+        var path = Path.Combine(dynamicDir, $"{routerName}.yml");
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+
     private static bool IsInfrastructureService(string serviceName, string imageName)
     {
         var value = $"{serviceName} {imageName}";
@@ -647,7 +803,7 @@ public class ProjectService
             || serviceName is "db" or "database" or "worker" or "beat" or "queue" or "mailhog" or "smtp";
     }
 
-    private ComposeConfigResponse? ToComposeConfigResponse(Project project)
+    private ComposeConfigResponse? ToComposeConfigResponse(Project project, StatefulMetadataResponse? stateful = null)
     {
         if (project.DeploymentMode != "compose" && string.IsNullOrWhiteSpace(project.RepoUrl))
             return null;
@@ -668,7 +824,8 @@ public class ProjectService
                 .Select(ev => ev with { Value = ev.IsSecret ? SecretMask : _secrets.Decrypt(ev.Value) })
                 .ToList(),
             project.ComposePostStartCommands,
-            liveUrls
+            liveUrls,
+            stateful ?? StatefulUnknown()
         );
     }
 
@@ -876,6 +1033,7 @@ public class ProjectService
         if (projectStatus.Equals("queued", StringComparison.OrdinalIgnoreCase)
             || projectStatus.Equals("deploying", StringComparison.OrdinalIgnoreCase)
             || projectStatus.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || projectStatus.Equals("unhealthy", StringComparison.OrdinalIgnoreCase)
             || projectStatus.Equals("stopped", StringComparison.OrdinalIgnoreCase))
             return projectStatus.ToLowerInvariant();
         return "configured";

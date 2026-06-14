@@ -254,16 +254,6 @@ resource "aws_network_interface" "control_plane" {
   })
 }
 
-resource "aws_network_interface" "execution_node" {
-  subnet_id       = aws_subnet.private.id
-  private_ips     = ["10.42.2.10"]
-  security_groups = [aws_security_group.execution_node.id]
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-execution-node-eni"
-  })
-}
-
 resource "aws_instance" "control_plane" {
   ami                  = data.aws_ami.ubuntu_arm64.id
   instance_type        = var.control_plane_instance_type
@@ -307,25 +297,33 @@ resource "aws_instance" "control_plane" {
   })
 }
 
-resource "aws_instance" "execution_node" {
-  ami                  = data.aws_ami.ubuntu_arm64.id
-  instance_type        = var.execution_node_instance_type
-  key_name             = var.key_name
-  iam_instance_profile = aws_iam_instance_profile.ec2.name
+resource "aws_launch_template" "execution_node" {
+  name_prefix   = "${var.project_name}-execution-node-"
+  image_id      = data.aws_ami.ubuntu_arm64.id
+  instance_type = var.execution_node_instance_type
+  key_name      = var.key_name
 
-  network_interface {
-    network_interface_id = aws_network_interface.execution_node.id
-    device_index         = 0
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ec2.name
   }
 
-  user_data_replace_on_change = true
-  user_data = templatefile("${path.module}/templates/execution_node_user_data.sh.tftpl", {
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [aws_security_group.execution_node.id]
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
+  user_data = base64encode(templatefile("${path.module}/templates/execution_node_user_data.sh.tftpl", {
     deployment_path                   = local.deployment_path
     repository_url                    = var.repository_url
     repository_ref                    = var.repository_ref
     domain_name                       = local.domain_name
     control_plane_private_ip          = aws_network_interface.control_plane.private_ip
-    execution_node_private_ip         = aws_network_interface.execution_node.private_ip
     execution_node_token              = local.execution_node_token
     execution_node_registration_token = local.execution_node_registration_token
     worker_build_timeout              = var.worker_build_timeout
@@ -333,20 +331,71 @@ resource "aws_instance" "execution_node" {
     container_memory_limit            = var.container_memory_limit
     container_cpu_limit               = var.container_cpu_limit
     container_pids_limit              = var.container_pids_limit
-  })
+  }))
 
-  root_block_device {
-    volume_type           = "gp3"
-    volume_size           = var.execution_node_root_volume_size_gb
-    delete_on_termination = true
-    encrypted             = true
+  block_device_mappings {
+    device_name = "/dev/sda1"
+
+    ebs {
+      volume_type           = "gp3"
+      volume_size           = var.execution_node_root_volume_size_gb
+      delete_on_termination = true
+      encrypted             = true
+    }
   }
 
-  depends_on = [aws_instance.control_plane]
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = merge(local.common_tags, {
+      Name = "${var.project_name}-execution-node"
+    })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+
+    tags = merge(local.common_tags, {
+      Name = "${var.project_name}-execution-node-root"
+    })
+  }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-execution-node"
+    Name = "${var.project_name}-execution-node-lt"
   })
+}
+
+resource "aws_autoscaling_group" "execution_nodes" {
+  name                = "${var.project_name}-execution-nodes"
+  min_size            = var.execution_node_min_size
+  desired_capacity    = var.execution_node_desired_capacity
+  max_size            = var.execution_node_max_size
+  vpc_zone_identifier = [aws_subnet.private.id]
+
+  launch_template {
+    id      = aws_launch_template.execution_node.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${var.project_name}-execution-node"
+    propagate_at_launch = true
+  }
+
+  dynamic "tag" {
+    for_each = local.common_tags
+    content {
+      key                 = tag.key
+      value               = tag.value
+      propagate_at_launch = true
+    }
+  }
+
+  depends_on = [
+    aws_instance.control_plane,
+    aws_route_table_association.private
+  ]
 }
 
 resource "aws_eip" "control_plane" {

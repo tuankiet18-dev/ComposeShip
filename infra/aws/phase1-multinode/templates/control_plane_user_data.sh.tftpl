@@ -68,7 +68,7 @@ chown -R ubuntu:ubuntu .generated
 chmod 0600 .generated/multinode-secrets.env
 
 log "Rendering control-plane env"
-sudo -u ubuntu bash -lc "CONTROL_PLANE_PUBLIC_IP='$${DOMAIN_NAME%.sslip.io}' CONTROL_PLANE_PRIVATE_IP='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_API_BIND='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_API_HOST='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_POSTGRES_PASSWORD='${postgres_password}' EXECUTION_NODE_PRIVATE_IP='10.42.2.10' ./scripts/render-multinode-env.sh"
+sudo -u ubuntu bash -lc "CONTROL_PLANE_PUBLIC_IP='$${DOMAIN_NAME%.sslip.io}' CONTROL_PLANE_PRIVATE_IP='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_API_BIND='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_API_HOST='$CONTROL_PLANE_PRIVATE_IP' CONTROL_PLANE_POSTGRES_PASSWORD='${postgres_password}' ./scripts/render-multinode-env.sh"
 
 log "Adding production phase-one control-plane overrides"
 cat >> .generated/multinode/control-plane.env <<'ENVEOF'

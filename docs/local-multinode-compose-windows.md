@@ -102,13 +102,13 @@ COMPOSE_PROJECT_NAME=oneclick-execution
 ## Start Control-Plane
 
 ```powershell
-docker compose --env-file .generated\multinode\control-plane.env up -d --build
+docker compose -f docker-compose.control-plane.phase1.yml -f docker-compose.control-plane.local.yml --env-file .generated\multinode\control-plane.env up -d --build
 ```
 
 Kiểm tra:
 
 ```powershell
-docker compose --env-file .generated\multinode\control-plane.env ps
+docker compose -f docker-compose.control-plane.phase1.yml -f docker-compose.control-plane.local.yml --env-file .generated\multinode\control-plane.env ps
 ```
 
 Kỳ vọng:

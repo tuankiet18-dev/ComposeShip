@@ -4,7 +4,8 @@ This stack is the cheapest practical AWS production shape for public, untrusted
 Compose repos in `ap-southeast-1`:
 
 - one public control-plane EC2 instance;
-- one private-only execution-node EC2 instance;
+- one private-only execution-node Auto Scaling Group, defaulting to one EC2
+  instance for the cheapest recovery-ready baseline;
 - one Elastic IP and `sslip.io` HTTP routing;
 - no NAT Gateway, no ALB, no RDS, no ECR requirement;
 - control-plane acts as a small NAT instance for the private execution-node.
@@ -22,8 +23,10 @@ Internet
        - Dispatcher worker without Docker socket
        - NAT instance iptables for private subnet outbound
 
-execution-node EC2 private subnet
+execution-node Auto Scaling Group in private subnet
   - no public IPv4
+  - default min/desired/max: 1/1/2
+  - replacement nodes register themselves with a unique EC2 instance id name
   - worker executor with Docker socket
   - user Compose workloads
   - selected app ports bind to private IP only
@@ -36,7 +39,8 @@ Default sizing:
 | Resource | Default |
 |---|---|
 | Control-plane EC2 | `t4g.small` |
-| Execution-node EC2 | `t4g.small` |
+| Execution-node ASG | `min=1`, `desired=1`, `max=2` |
+| Execution-node EC2 type | `t4g.small` |
 | Control-plane EBS gp3 | 20 GB |
 | Execution-node EBS gp3 | 40 GB |
 | Public IPv4 | 1 Elastic IP |
@@ -89,7 +93,8 @@ SSH to control-plane:
 terraform output control_plane_ssh_command
 ```
 
-SSH to execution-node through the control-plane bastion:
+SSH to an execution-node through the control-plane bastion. First discover the
+node private IP from the ASG/EC2 console or AWS CLI, then use:
 
 ```bash
 terraform output execution_node_ssh_command

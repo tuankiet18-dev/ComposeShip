@@ -48,7 +48,7 @@ export function ProjectsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Projects"
-        description="All of your apps, grouped by project."
+        description="Pick a project to configure Compose, deploy, open live URLs, or debug runtime events."
         actions={
           <Button asChild>
             <Link to="/projects/new">
@@ -85,8 +85,11 @@ export function ProjectsPage() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="live">Live</SelectItem>
             <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="queued">Queued</SelectItem>
             <SelectItem value="building">Building</SelectItem>
+            <SelectItem value="deploying">Deploying</SelectItem>
             <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="unhealthy">Unhealthy</SelectItem>
             <SelectItem value="stopped">Stopped</SelectItem>
           </SelectContent>
         </Select>

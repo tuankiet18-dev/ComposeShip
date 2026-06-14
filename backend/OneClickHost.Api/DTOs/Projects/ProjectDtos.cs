@@ -62,7 +62,8 @@ public record ComposeInspectResponse(
     string ComposeFile,
     List<ComposeServiceSuggestion> Services,
     List<ComposeRouteResponse> SuggestedRoutes,
-    List<ComposeEnvVarResponse> SuggestedEnvironmentVariables
+    List<ComposeEnvVarResponse> SuggestedEnvironmentVariables,
+    StatefulMetadataResponse Stateful
 );
 
 public record ComposeServiceSuggestion(
@@ -114,7 +115,8 @@ public record ComposeConfigResponse(
     List<ComposeRouteResponse> Routes,
     List<ComposeEnvVarResponse> EnvironmentVariables,
     string? PostStartCommands,
-    List<string> LiveUrls
+    List<string> LiveUrls,
+    StatefulMetadataResponse Stateful
 );
 
 public record ComposeRouteResponse(
@@ -162,6 +164,25 @@ public record RouteTargetResponse(
     string Status,
     string? ExecutionNodeName,
     DateTime UpdatedAt
+);
+
+public record StatefulMetadataResponse(
+    string Risk,
+    List<string> Warnings
+);
+
+public record ProjectEventResponse(
+    Guid Id,
+    Guid ProjectId,
+    Guid? DeploymentId,
+    Guid? ExecutionNodeId,
+    string? ExecutionNodeName,
+    Guid? RouteTargetId,
+    string Type,
+    string Severity,
+    string Message,
+    Dictionary<string, string> Metadata,
+    DateTime CreatedAt
 );
 
 public record DeploymentGraphResponse(

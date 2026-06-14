@@ -34,4 +34,5 @@ public class ExecutionNode
     public ICollection<RouteTarget> RouteTargets { get; set; } = new List<RouteTarget>();
     public ICollection<Deployment> Deployments { get; set; } = new List<Deployment>();
     public ICollection<ProjectDeployment> ProjectDeployments { get; set; } = new List<ProjectDeployment>();
+    public ICollection<ProjectEvent> Events { get; set; } = new List<ProjectEvent>();
 }

@@ -76,11 +76,16 @@ class ExecutionNodeClient:
             {"currentBuilds": current_builds, "status": status},
         )
 
-    def lease(self) -> dict:
+    def lease(self, current_builds: int = 0, status: str = "active") -> dict:
         return self._request(
             "POST",
             f"/execution-nodes/{self.node_id}/lease",
-            {"availableSlots": MAX_CONCURRENT_BUILDS, "labels": EXECUTION_NODE_LABELS},
+            {
+                "availableSlots": max(0, MAX_CONCURRENT_BUILDS - current_builds),
+                "labels": EXECUTION_NODE_LABELS,
+                "currentBuilds": current_builds,
+                "status": status,
+            },
         )
 
     def event(self, deployment_id: str, body: dict):

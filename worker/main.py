@@ -688,8 +688,7 @@ def run_executor_loop():
 
     while True:
         try:
-            client.heartbeat(current_builds=0, status="active")
-            lease = client.lease()
+            lease = client.lease(current_builds=0, status="active")
             if lease.get("hasWork") and lease.get("kind") == "compose":
                 process_project_deployment_lease(client, lease["compose"])
             elif lease.get("hasWork"):

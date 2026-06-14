@@ -15,7 +15,7 @@ public class Project
     public string? Description { get; set; }
 
     [MaxLength(20)]
-    public string Status { get; set; } = "active"; // active | queued | deploying | live | stopping | stopped | failed | deleting
+    public string Status { get; set; } = "active"; // active | queued | deploying | live | unhealthy | stopping | stopped | failed | deleting
 
     [MaxLength(20)]
     public string DeploymentMode { get; set; } = "services"; // services | compose
@@ -53,4 +53,5 @@ public class Project
     public ICollection<Service> Services { get; set; } = new List<Service>();
     public ICollection<ProjectDeployment> ProjectDeployments { get; set; } = new List<ProjectDeployment>();
     public ICollection<RouteTarget> RouteTargets { get; set; } = new List<RouteTarget>();
+    public ICollection<ProjectEvent> Events { get; set; } = new List<ProjectEvent>();
 }

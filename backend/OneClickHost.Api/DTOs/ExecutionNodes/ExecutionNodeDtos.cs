@@ -32,7 +32,9 @@ public record HeartbeatExecutionNodeRequest(
 
 public record LeaseRequest(
     int AvailableSlots,
-    List<string>? Labels
+    List<string>? Labels,
+    int? CurrentBuilds,
+    string? Status
 );
 
 public record LeaseResponse(

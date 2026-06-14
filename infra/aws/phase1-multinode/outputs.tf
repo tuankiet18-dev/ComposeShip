@@ -8,9 +8,9 @@ output "control_plane_private_ip" {
   value       = aws_network_interface.control_plane.private_ip
 }
 
-output "execution_node_private_ip" {
-  description = "Private-only execution-node IP."
-  value       = aws_network_interface.execution_node.private_ip
+output "execution_node_autoscaling_group_name" {
+  description = "Auto Scaling Group that owns private execution-node instances."
+  value       = aws_autoscaling_group.execution_nodes.name
 }
 
 output "app_url" {
@@ -29,8 +29,8 @@ output "control_plane_ssh_command" {
 }
 
 output "execution_node_ssh_command" {
-  description = "SSH command to reach the private execution-node through the control-plane bastion."
-  value       = "ssh -i <path-to-private-key> -J ubuntu@${aws_eip.control_plane.public_ip} ubuntu@${aws_network_interface.execution_node.private_ip}"
+  description = "SSH pattern to reach a private execution-node through the control-plane bastion. Discover the node private IP from the ASG first."
+  value       = "ssh -i <path-to-private-key> -J ubuntu@${aws_eip.control_plane.public_ip} ubuntu@<execution-node-private-ip>"
 }
 
 output "fixture_repo" {

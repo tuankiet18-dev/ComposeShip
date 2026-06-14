@@ -12,10 +12,12 @@ namespace OneClickHost.Api.Controllers;
 public class ProjectsController : ControllerBase
 {
     private readonly ProjectService _projectService;
+    private readonly ProjectEventService _projectEventService;
 
-    public ProjectsController(ProjectService projectService)
+    public ProjectsController(ProjectService projectService, ProjectEventService projectEventService)
     {
         _projectService = projectService;
+        _projectEventService = projectEventService;
     }
 
     [HttpGet]
@@ -166,6 +168,20 @@ public class ProjectsController : ControllerBase
         {
             var userId = GetUserId();
             return Ok(await _projectService.GetProjectDeploymentsAsync(id, userId));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project not found." });
+        }
+    }
+
+    [HttpGet("{id:guid}/events")]
+    public async Task<ActionResult<List<ProjectEventResponse>>> GetProjectEvents(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            return Ok(await _projectEventService.GetProjectEventsAsync(id, userId));
         }
         catch (KeyNotFoundException)
         {

@@ -17,10 +17,8 @@ import {
   Save,
   Server,
   ShieldCheck,
-  Square,
   Trash2,
   Workflow,
-  Play,
 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -49,9 +47,7 @@ import { toast } from "sonner";
 type ComposeStackPanelProps = {
   project: ProjectDetail;
   projectId: string;
-  pendingAction: string | null;
   onProjectChanged: () => void;
-  onRunProjectAction: (action: "deploy" | "stop") => void;
 };
 
 const fixtureRepo = "https://github.com/tuankiet18-dev/oneclick-compose-fixture";
@@ -64,9 +60,7 @@ const exposureOptions = [
 export function ComposeStackPanel({
   project,
   projectId,
-  pendingAction,
   onProjectChanged,
-  onRunProjectAction,
 }: ComposeStackPanelProps) {
   const config = project.composeConfig;
   const [repoUrl, setRepoUrl] = useState(config?.repoUrl || "");
@@ -102,9 +96,17 @@ export function ComposeStackPanel({
 
   const latestDeployment = project.recentProjectDeployments[0] || null;
   const routeTargets = latestDeployment?.routeTargets || [];
+  const stateful = inspectResult?.stateful || config?.stateful || null;
   const duplicateRouteSlugs = findDuplicates(routes.map((route) => route.routeSlug.trim()).filter(Boolean));
   const duplicateEnvKeys = findDuplicates(envVars.map((envVar) => `${envVar.serviceName}:${envVar.key}`).filter((key) => !key.endsWith(":")));
   const canSave = repoUrl.trim().length > 0 && duplicateRouteSlugs.length === 0 && duplicateEnvKeys.length === 0;
+  const savedConfigReady = Boolean(config?.repoUrl && config.routes.length > 0);
+  const workflowSteps = [
+    { label: "Source", detail: repoUrl ? "Repo selected" : "Add repo", state: repoUrl ? "done" : "current" },
+    { label: "Routes", detail: routes.length ? `${routes.length} public` : "Add route", state: routes.length ? "done" : repoUrl ? "current" : "pending" },
+    { label: "Save", detail: savedConfigReady ? "Ready" : "Persist config", state: savedConfigReady ? "done" : canSave ? "current" : "pending" },
+    { label: "Deploy", detail: latestDeployment ? latestDeployment.status : "Queue stack", state: latestDeployment ? "done" : savedConfigReady ? "current" : "pending" },
+  ] as const;
 
   const inspectCompose = async () => {
     setInspecting(true);
@@ -174,14 +176,7 @@ export function ComposeStackPanel({
       { serviceName: "frontend", routeSlug: "app", internalPort: 3000, exposureProvider: "traefik", healthPath: "/" },
       { serviceName: "api", routeSlug: "api", internalPort: 8000, exposureProvider: "traefik", healthPath: "/health" },
     ]);
-    setEnvVars([
-      {
-        serviceName: "api",
-        key: "DATABASE_URL",
-        value: "postgresql://oneclick:oneclick@db:5432/oneclick_fixture",
-        isSecret: true,
-      },
-    ]);
+    setEnvVars([]);
     toast.success("Fixture configuration filled");
   };
 
@@ -216,6 +211,8 @@ export function ComposeStackPanel({
         />
       </div>
 
+      <WorkflowStrip steps={workflowSteps} />
+
       <Card>
         <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -241,7 +238,7 @@ export function ComposeStackPanel({
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_160px_160px_180px]">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.5fr)_160px_160px_180px]">
             <Field label="Repository URL" htmlFor="compose-repo">
               <Input
                 id="compose-repo"
@@ -273,6 +270,20 @@ export function ComposeStackPanel({
             </div>
           </div>
 
+          {stateful && stateful.risk !== "none" && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium">Stateful workload warning</p>
+                <div className="mt-1 space-y-1">
+                  {stateful.warnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {!canSave && (
             <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
                   <AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />
@@ -289,17 +300,20 @@ export function ComposeStackPanel({
 
       {services.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Server className="h-4 w-4 text-primary" />
-              Discovered services
-            </CardTitle>
-            <CardDescription>Use ports and environment keys from inspection to decide what becomes public.</CardDescription>
+          <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Server className="h-4 w-4 text-primary" />
+                Discovered services
+              </CardTitle>
+              <CardDescription>Promote only user-facing services to public routes. Keep databases and caches private.</CardDescription>
+            </div>
+            <Badge variant="outline">{services.length} services found</Badge>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 lg:grid-cols-2">
               {services.map((service) => (
-                <div key={service.name} className="rounded-md border p-3">
+                <div key={service.name} className="rounded-md border bg-background p-3 transition-colors hover:border-primary/40">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -310,10 +324,14 @@ export function ComposeStackPanel({
                         {service.image || service.buildContext || "compose service"}
                       </p>
                     </div>
-                    <Button type="button" size="sm" variant="outline" onClick={() => addRoute(service.name, service.ports[0] || 3000)}>
-                      <Plus className="h-4 w-4" />
-                      Route
-                    </Button>
+                    {service.looksPublic ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => addRoute(service.name, service.ports[0] || 3000)}>
+                        <Plus className="h-4 w-4" />
+                        Route
+                      </Button>
+                    ) : (
+                      <Badge variant="outline" className="shrink-0">Private</Badge>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {(service.ports.length ? service.ports : ["no public ports"]).map((port) => (
@@ -351,7 +369,7 @@ export function ComposeStackPanel({
                 <Globe2 className="h-4 w-4 text-primary" />
                 Public routes
               </CardTitle>
-              <CardDescription>Expose frontend/API surfaces. Leave databases and queues without routes.</CardDescription>
+              <CardDescription>Each route becomes a public URL after deployment.</CardDescription>
             </div>
             <Button type="button" variant="outline" onClick={() => addRoute()}>
               <Plus className="h-4 w-4" />
@@ -365,69 +383,79 @@ export function ComposeStackPanel({
             ) : (
               <div className="space-y-2">
                 {routes.map((route, index) => (
-                  <div key={`${route.serviceName}-${index}`} className="grid gap-2 rounded-md border p-3 lg:grid-cols-[1.1fr_0.9fr_110px_1fr_1fr_auto]">
-                    <Field label="Service" htmlFor={`route-service-${index}`}>
-                      <Input
-                        id={`route-service-${index}`}
-                        list="compose-service-names"
-                        value={route.serviceName}
-                        onChange={(event) => updateRoute(index, { serviceName: event.target.value })}
-                        placeholder="frontend"
-                      />
-                    </Field>
-                    <Field label="Slug" htmlFor={`route-slug-${index}`}>
-                      <Input
-                        id={`route-slug-${index}`}
-                        value={route.routeSlug}
-                        onChange={(event) => updateRoute(index, { routeSlug: toSlug(event.target.value) })}
-                        placeholder="app"
-                      />
-                    </Field>
-                    <Field label="Port" htmlFor={`route-port-${index}`}>
-                      <Input
-                        id={`route-port-${index}`}
-                        type="number"
-                        min={1}
-                        max={65535}
-                        value={route.internalPort}
-                        onChange={(event) => updateRoute(index, { internalPort: Number(event.target.value) })}
-                      />
-                    </Field>
-                    <Field label="Expose" htmlFor={`route-exposure-${index}`}>
-                      <Select
-                        value={route.exposureProvider || "traefik"}
-                        onValueChange={(value) => updateRoute(index, { exposureProvider: value as ComposeRoute["exposureProvider"] })}
+                  <div key={`${route.serviceName}-${index}`} className="rounded-md border bg-background p-3">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">Route {index + 1}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {route.serviceName || "service"}:{route.internalPort || "port"} {"->"} /{route.routeSlug || "slug"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setRoutes((items) => items.filter((_, itemIndex) => itemIndex !== index))}
                       >
-                        <SelectTrigger id={`route-exposure-${index}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {exposureOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field label="Health" htmlFor={`route-health-${index}`}>
-                      <Input
-                        id={`route-health-${index}`}
-                        value={route.healthPath || ""}
-                        onChange={(event) => updateRoute(index, { healthPath: event.target.value })}
-                        placeholder="/health"
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="self-end justify-self-start lg:justify-self-end"
-                      onClick={() => setRoutes((items) => items.filter((_, itemIndex) => itemIndex !== index))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Remove
-                    </Button>
+                        <Trash2 className="h-4 w-4" />
+                        Remove
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 2xl:grid-cols-2">
+                      <Field label="Service" htmlFor={`route-service-${index}`}>
+                        <Input
+                          id={`route-service-${index}`}
+                          list="compose-service-names"
+                          value={route.serviceName}
+                          onChange={(event) => updateRoute(index, { serviceName: event.target.value })}
+                          placeholder="frontend"
+                        />
+                      </Field>
+                      <Field label="Route slug" htmlFor={`route-slug-${index}`}>
+                        <Input
+                          id={`route-slug-${index}`}
+                          value={route.routeSlug}
+                          onChange={(event) => updateRoute(index, { routeSlug: toSlug(event.target.value) })}
+                          placeholder="app"
+                        />
+                      </Field>
+                      <Field label="Internal port" htmlFor={`route-port-${index}`}>
+                        <Input
+                          id={`route-port-${index}`}
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={route.internalPort}
+                          onChange={(event) => updateRoute(index, { internalPort: Number(event.target.value) })}
+                        />
+                      </Field>
+                      <Field label="Exposure" htmlFor={`route-exposure-${index}`}>
+                        <Select
+                          value={route.exposureProvider || "traefik"}
+                          onValueChange={(value) => updateRoute(index, { exposureProvider: value as ComposeRoute["exposureProvider"] })}
+                        >
+                          <SelectTrigger id={`route-exposure-${index}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {exposureOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Health path" htmlFor={`route-health-${index}`}>
+                        <Input
+                          id={`route-health-${index}`}
+                          value={route.healthPath || ""}
+                          onChange={(event) => updateRoute(index, { healthPath: event.target.value })}
+                          placeholder="/health"
+                        />
+                      </Field>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -514,17 +542,12 @@ export function ComposeStackPanel({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => onRunProjectAction("stop")} disabled={pendingAction === "stop-stack"}>
-              {pendingAction === "stop-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-              Stop stack
-            </Button>
-            <Button onClick={() => onRunProjectAction("deploy")} disabled={pendingAction === "deploy-stack" || !config || config.routes.length === 0}>
-              {pendingAction === "deploy-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Deploy stack
-            </Button>
             <Button asChild variant="ghost">
               <Link to="/deployments">Open logs</Link>
             </Button>
+            <span className="inline-flex items-center rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Deploy and stop actions live in the project action bar above.
+            </span>
           </div>
 
           {latestDeployment ? (
@@ -616,6 +639,45 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
     <div className="space-y-2">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
+    </div>
+  );
+}
+
+function WorkflowStrip({
+  steps,
+}: {
+  steps: ReadonlyArray<{ label: string; detail: string; state: "done" | "current" | "pending" }>;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="grid gap-2 md:grid-cols-4">
+        {steps.map((step, index) => (
+          <div
+            key={step.label}
+            className={cn(
+              "rounded-md border p-3 transition-colors",
+              step.state === "done" && "border-success/25 bg-success/10",
+              step.state === "current" && "border-primary/30 bg-primary/10",
+              step.state === "pending" && "border-border bg-muted/30",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-xs font-semibold",
+                  step.state === "done" && "border-success/30 bg-success/15 text-success",
+                  step.state === "current" && "border-primary/30 bg-primary/15 text-primary",
+                  step.state === "pending" && "border-border bg-background text-muted-foreground",
+                )}
+              >
+                {index + 1}
+              </span>
+              <span className="text-sm font-medium">{step.label}</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{step.detail}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

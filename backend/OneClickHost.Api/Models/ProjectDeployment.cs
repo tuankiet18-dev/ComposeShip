@@ -39,4 +39,5 @@ public class ProjectDeployment
     public Project Project { get; set; } = null!;
     public ExecutionNode? LockedByNode { get; set; }
     public ICollection<RouteTarget> RouteTargets { get; set; } = new List<RouteTarget>();
+    public ICollection<ProjectEvent> Events { get; set; } = new List<ProjectEvent>();
 }

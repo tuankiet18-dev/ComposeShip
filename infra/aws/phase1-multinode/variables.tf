@@ -54,6 +54,24 @@ variable "execution_node_instance_type" {
   }
 }
 
+variable "execution_node_min_size" {
+  description = "Minimum number of private execution-node instances in the Auto Scaling Group."
+  type        = number
+  default     = 1
+}
+
+variable "execution_node_desired_capacity" {
+  description = "Desired number of private execution-node instances in the Auto Scaling Group."
+  type        = number
+  default     = 1
+}
+
+variable "execution_node_max_size" {
+  description = "Maximum number of private execution-node instances in the Auto Scaling Group."
+  type        = number
+  default     = 2
+}
+
 variable "control_plane_root_volume_size_gb" {
   description = "Root EBS volume size for the control-plane node."
   type        = number

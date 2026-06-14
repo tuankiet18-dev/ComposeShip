@@ -27,4 +27,5 @@ public class RouteTarget
     public ProjectDeployment? ProjectDeployment { get; set; }
     public Service? Service { get; set; }
     public ExecutionNode ExecutionNode { get; set; } = null!;
+    public ICollection<ProjectEvent> Events { get; set; } = new List<ProjectEvent>();
 }

@@ -1,11 +1,12 @@
-import { Copy, Download, Filter, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Copy, Download, Filter, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/app/EmptyState";
 import { PageHeader } from "@/components/app/PageHeader";
 import { StatusBadge } from "@/components/app/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { api, type AiDiagnosis } from "@/lib/api";
 import {
   collectDeployments,
   deploymentMessage,
@@ -24,6 +25,9 @@ export function DeploymentsPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [filterErrors, setFilterErrors] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [diagnosis, setDiagnosis] = useState<AiDiagnosis | null>(null);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -68,6 +72,32 @@ export function DeploymentsPage() {
     if (autoScroll) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [logs, autoScroll]);
 
+  useEffect(() => {
+    setDiagnosis(null);
+    setDiagnosisError(null);
+    setDiagnosisLoading(false);
+  }, [selected?.id]);
+
+  const diagnoseSelected = async () => {
+    if (!selected || selected.kind !== "service") return;
+
+    setDiagnosisLoading(true);
+    setDiagnosisError(null);
+    try {
+      const result = selected.hasAiDiagnosis
+        ? await api.getAiDiagnosis(selected.id)
+        : await api.generateAiDiagnosis(selected.id);
+      setDiagnosis(result);
+      toast.success("Diagnosis ready");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not diagnose this deployment.";
+      setDiagnosisError(message);
+      toast.error(message);
+    } finally {
+      setDiagnosisLoading(false);
+    }
+  };
+
   const copyLogs = async () => {
     try {
       await navigator.clipboard.writeText(logs);
@@ -91,7 +121,7 @@ export function DeploymentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Deployments" description="All deploys across your projects, with live logs." />
+      <PageHeader title="Activity & logs" description="Deployment history, failure context, and build logs across every project." />
 
       {loading ? (
         <div className="flex justify-center py-20">
@@ -102,6 +132,11 @@ export function DeploymentsPage() {
           icon={Filter}
           title="No deployments yet"
           description="Deploy a service or Compose stack to see logs and deployment history here."
+          action={
+            <Button asChild>
+              <Link to="/projects">Open projects</Link>
+            </Button>
+          }
         />
       ) : (
         <section className="grid max-w-full gap-6 overflow-hidden lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
@@ -158,6 +193,14 @@ export function DeploymentsPage() {
                 </CardContent>
               </Card>
 
+              <DeploymentDiagnosisPanel
+                deployment={selected}
+                diagnosis={diagnosis}
+                diagnosisError={diagnosisError}
+                diagnosisLoading={diagnosisLoading}
+                onDiagnose={diagnoseSelected}
+              />
+
               <Card className="min-w-0 overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -197,4 +240,119 @@ export function DeploymentsPage() {
       )}
     </div>
   );
+}
+
+function DeploymentDiagnosisPanel({
+  deployment,
+  diagnosis,
+  diagnosisError,
+  diagnosisLoading,
+  onDiagnose,
+}: {
+  deployment: AppDeployment;
+  diagnosis: AiDiagnosis | null;
+  diagnosisError: string | null;
+  diagnosisLoading: boolean;
+  onDiagnose: () => void;
+}) {
+  const failed = isErrorStatus(deployment.status);
+  const isServiceDeployment = deployment.kind === "service";
+  const canDiagnose = failed && isServiceDeployment && deployment.hasDiagnosticSnapshot;
+
+  return (
+    <Card className="min-w-0 overflow-hidden">
+      <CardContent className="space-y-4 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="h-4 w-4 text-primary" />
+              <h2 className="text-base font-semibold">AI diagnosis</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Explain failed service deploys from captured logs and diagnostic snapshots.
+            </p>
+          </div>
+          <Button type="button" onClick={onDiagnose} disabled={!canDiagnose || diagnosisLoading}>
+            {diagnosisLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit className="h-4 w-4" />}
+            {deployment.hasAiDiagnosis ? "Open diagnosis" : "Diagnose issue"}
+          </Button>
+        </div>
+
+        {!failed && (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Diagnosis appears after a deployment fails.
+          </p>
+        )}
+
+        {failed && !isServiceDeployment && (
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />
+            <div>
+              <p className="font-medium">Compose stack diagnosis is not wired yet</p>
+              <p className="mt-1 text-muted-foreground">
+                AI diagnosis is currently available for single-service deployments. Compose stack support needs project-deployment diagnostics on the backend.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {failed && isServiceDeployment && !deployment.hasDiagnosticSnapshot && (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            No diagnostic snapshot was captured for this failed deployment.
+          </p>
+        )}
+
+        {diagnosisError && (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {diagnosisError}
+          </p>
+        )}
+
+        {diagnosis && (
+          <div className="space-y-4 rounded-md border bg-muted/20 p-4">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Root cause</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="rounded bg-primary/10 px-2 py-0.5 text-primary">
+                  {diagnosis.diagnosis.rootCauseCategory}
+                </span>
+                <span className="rounded bg-muted px-2 py-0.5 text-muted-foreground">
+                  {diagnosis.diagnosis.confidence} confidence
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6">{diagnosis.diagnosis.diagnosis}</p>
+            </div>
+            <DiagnosisList title="Evidence" values={diagnosis.diagnosis.evidence} />
+            <DiagnosisList title="Suggested fixes" values={diagnosis.diagnosis.suggestedFixes} />
+            {diagnosis.diagnosis.platformIssueReason && (
+              <p className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+                {diagnosis.diagnosis.platformIssueReason}
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DiagnosisList({ title, values }: { title: string; values: string[] }) {
+  if (values.length === 0) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
+      <ul className="mt-2 space-y-2 text-sm leading-6">
+        {values.map((value) => (
+          <li key={value} className="rounded border bg-background px-3 py-2 text-muted-foreground">
+            {value}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function isErrorStatus(status: string) {
+  const value = status.toLowerCase();
+  return value.includes("failed") || value.includes("error") || value.includes("unhealthy");
 }

@@ -53,6 +53,8 @@ builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<ServiceService>();
 builder.Services.AddScoped<DeploymentService>();
 builder.Services.AddScoped<ExecutionNodeService>();
+builder.Services.AddScoped<ProjectEventService>();
+builder.Services.AddHostedService<ExecutionNodeMonitorService>();
 builder.Services.AddHttpClient<IAiDeploymentDiagnosisService, AiDeploymentDiagnosisService>();
 
 // ── Controllers ──────────────────────────────────

@@ -9,7 +9,6 @@ usage() {
 Usage:
   CONTROL_PLANE_PUBLIC_IP=1.2.3.4 \
   CONTROL_PLANE_PRIVATE_IP=10.0.1.10 \
-  EXECUTION_NODE_PRIVATE_IP=10.0.1.20 \
   ./scripts/render-multinode-env.sh
 
 Optional:
@@ -19,10 +18,11 @@ Optional:
   CONTROL_PLANE_API_BIND=10.0.1.10
   CONTROL_PLANE_API_HOST=10.0.1.10
   CONTROL_PLANE_POSTGRES_PASSWORD=existing-local-password
+  EXECUTION_NODE_PRIVATE_IP=10.0.1.20
 
 This renders:
   .generated/multinode/control-plane.env
-  .generated/multinode/execution-node.env
+  .generated/multinode/execution-node.env when EXECUTION_NODE_PRIVATE_IP is set
 EOF
 }
 
@@ -41,7 +41,6 @@ source "$secrets_file"
 set +a
 
 : "${CONTROL_PLANE_PUBLIC_IP:?CONTROL_PLANE_PUBLIC_IP is required}"
-: "${EXECUTION_NODE_PRIVATE_IP:?EXECUTION_NODE_PRIVATE_IP is required}"
 
 control_plane_private_ip="${CONTROL_PLANE_PRIVATE_IP:-$CONTROL_PLANE_PUBLIC_IP}"
 control_plane_api_bind="${CONTROL_PLANE_API_BIND:-$control_plane_private_ip}"
@@ -79,7 +78,8 @@ AUTO_MIGRATE_DATABASE=true
 WORKER_MODE=dispatcher
 EOF
 
-cat >"${output_dir}/execution-node.env" <<EOF
+if [[ -n "${EXECUTION_NODE_PRIVATE_IP:-}" ]]; then
+  cat >"${output_dir}/execution-node.env" <<EOF
 # Generated execution-node env for OneClickHost multi-node phase one.
 COMPOSE_PROJECT_NAME=oneclick-execution
 WORKER_MODE=executor
@@ -100,13 +100,23 @@ CONTAINER_CPU_LIMIT=0.5
 CONTAINER_PIDS_LIMIT=256
 LOG_MAX_BYTES=200000
 EOF
+  chmod 600 "${output_dir}/execution-node.env" 2>/dev/null || true
+fi
 
-chmod 600 "${output_dir}/control-plane.env" "${output_dir}/execution-node.env" 2>/dev/null || true
+chmod 600 "${output_dir}/control-plane.env" 2>/dev/null || true
 
 cat <<EOF
 Rendered:
   ${output_dir}/control-plane.env
+EOF
+
+if [[ -n "${EXECUTION_NODE_PRIVATE_IP:-}" ]]; then
+  cat <<EOF
   ${output_dir}/execution-node.env
+EOF
+fi
+
+cat <<EOF
 
 HTTP app domain:
   ${traefik_domain}

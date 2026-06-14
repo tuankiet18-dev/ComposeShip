@@ -15,6 +15,9 @@ repository_ref = "main"
 # if Docker builds run out of memory.
 control_plane_instance_type = "t4g.small"
 execution_node_instance_type = "t4g.small"
+execution_node_min_size = 1
+execution_node_desired_capacity = 1
+execution_node_max_size = 2
 control_plane_root_volume_size_gb = 20
 execution_node_root_volume_size_gb = 40
 

@@ -1,0 +1,17 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__CookieSecure: "false"
+      Cors__AllowedOrigins: http://localhost,http://127.0.0.1.sslip.io,http://localhost:3000,http://127.0.0.1:3000
+
+  frontend:
+    build:
+      args:
+        VITE_API_URL: /api
+    environment:
+      VITE_API_URL: /api

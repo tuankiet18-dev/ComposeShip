@@ -181,6 +181,10 @@ class ApiClient {
   async getProjectDeployments(projectId: string) {
     return this.request<ProjectDeployment[]>(`/projects/${projectId}/deployments`);
   }
+
+  async getProjectEvents(projectId: string) {
+    return this.request<ProjectEvent[]>(`/projects/${projectId}/events`);
+  }
 }
 
 export const api = new ApiClient();
@@ -310,6 +314,7 @@ export type ComposeConfig = {
   environmentVariables: ComposeEnvVar[];
   postStartCommands: string | null;
   liveUrls: string[];
+  stateful: StatefulMetadata;
 };
 
 export type ComposeConfigRequest = {
@@ -341,6 +346,12 @@ export type ComposeInspectResponse = {
   }[];
   suggestedRoutes: ComposeRoute[];
   suggestedEnvironmentVariables: ComposeEnvVar[];
+  stateful: StatefulMetadata;
+};
+
+export type StatefulMetadata = {
+  risk: "none" | "local_volume" | "local_database" | "unknown" | string;
+  warnings: string[];
 };
 
 export type ComposeService = {
@@ -382,6 +393,20 @@ export type RouteTarget = {
   status: string;
   executionNodeName: string | null;
   updatedAt: string;
+};
+
+export type ProjectEvent = {
+  id: string;
+  projectId: string;
+  deploymentId: string | null;
+  executionNodeId: string | null;
+  executionNodeName: string | null;
+  routeTargetId: string | null;
+  type: string;
+  severity: "info" | "warning" | "error" | string;
+  message: string;
+  metadata: Record<string, string>;
+  createdAt: string;
 };
 
 export type DeploymentGraph = {

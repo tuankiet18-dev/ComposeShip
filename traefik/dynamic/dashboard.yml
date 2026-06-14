@@ -5,14 +5,14 @@
 http:
   routers:
     api-router:
-      rule: "PathPrefix(`/api`)"
+      rule: "(Host(`127.0.0.1.sslip.io`) || Host(`localhost`)) && PathPrefix(`/api`)"
       service: api-service
       entryPoints:
         - web
       priority: 100
 
     frontend-router:
-      rule: "PathPrefix(`/`)"
+      rule: "Host(`127.0.0.1.sslip.io`) || Host(`localhost`)"
       service: frontend-service
       entryPoints:
         - web
