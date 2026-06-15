@@ -287,6 +287,47 @@ def _normalize_environment(value: Any) -> dict[str, str]:
     return env
 
 
+def _build_arg_keys(service: dict[str, Any]) -> set[str]:
+    build = service.get("build")
+    if not isinstance(build, dict):
+        return set()
+
+    args = build.get("args")
+    if isinstance(args, dict):
+        return {str(key) for key in args.keys()}
+
+    keys: set[str] = set()
+    for item in _as_list(args):
+        key, _, _ = str(item).partition("=")
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _set_build_arg(service: dict[str, Any], key: str, value: str):
+    build = service.get("build")
+    if not isinstance(build, dict):
+        return
+
+    args = build.get("args")
+    if isinstance(args, dict):
+        args[key] = value
+        return
+
+    if isinstance(args, list):
+        updated = []
+        replaced = False
+        for item in args:
+            item_key, _, _ = str(item).partition("=")
+            if item_key == key:
+                updated.append(f"{key}={value}")
+                replaced = True
+            else:
+                updated.append(item)
+        if replaced:
+            build["args"] = updated
+
+
 def _declares_environment_key(value: Any, key: str) -> bool:
     if value is None:
         return False
@@ -353,6 +394,7 @@ def prepare_compose_file(
             raise RuntimeError(f"Unsupported exposure provider for route '{route.get('routeSlug')}': {provider}")
 
     env_by_service: dict[str, dict[str, str]] = {}
+    build_args_by_service: dict[str, dict[str, str]] = {}
     auto_env_vars: list[dict[str, Any]] = []
     for env in env_vars:
         service_name = (env.get("serviceName") or "").strip()
@@ -362,6 +404,8 @@ def prepare_compose_file(
         if service_name not in services:
             raise RuntimeError(f"Environment variable references missing compose service: {service_name}")
         env_by_service.setdefault(service_name, {})[env["key"]] = env["value"]
+        if not env.get("isSecret"):
+            build_args_by_service.setdefault(service_name, {})[env["key"]] = env["value"]
 
     for env in auto_env_vars:
         key = env["key"]
@@ -388,6 +432,8 @@ def prepare_compose_file(
                 )
         for service_name in matched_services:
             env_by_service.setdefault(service_name, {})[key] = env["value"]
+            if not env.get("isSecret"):
+                build_args_by_service.setdefault(service_name, {})[key] = env["value"]
 
     labels = {
         ONECLICK_LABEL: "true",
@@ -419,6 +465,11 @@ def prepare_compose_file(
             **_normalize_environment(service.get("environment")),
             **env_by_service.get(service_name, {}),
         }
+        declared_build_args = _build_arg_keys(service)
+        for key, value in build_args_by_service.get(service_name, {}).items():
+            if key in declared_build_args:
+                _set_build_arg(service, key, value)
+                sanitize_logs.append(f"Injected environment variable '{key}' into build args for service '{service_name}'.")
         service.setdefault("mem_limit", CONTAINER_MEMORY_LIMIT)
         service.setdefault("cpus", str(CONTAINER_CPU_LIMIT))
         service.setdefault("pids_limit", int(os.getenv("CONTAINER_PIDS_LIMIT", "256")))
@@ -497,9 +548,19 @@ def write_traefik_routes(compose_project_name: str, project_name: str, routes: l
                     f"{router_name}-cors": {
                         "headers": {
                             "accessControlAllowMethods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-                            "accessControlAllowHeaders": ["*"],
+                            "accessControlAllowHeaders": [
+                                "Authorization",
+                                "Content-Type",
+                                "X-Requested-With",
+                                "X-SignalR-User-Agent",
+                                "Accept",
+                                "Origin",
+                            ],
                             "accessControlAllowOriginListRegex": [rf"^https?://.*\.{TRAEFIK_DOMAIN}$"],
                             "accessControlAllowCredentials": True,
+                            "customResponseHeaders": {
+                                "Access-Control-Allow-Headers": "Authorization,Content-Type,X-Requested-With,X-SignalR-User-Agent,Accept,Origin"
+                            },
                             "addVaryHeader": True,
                         }
                     }

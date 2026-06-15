@@ -96,6 +96,58 @@ def test_prepare_compose_exposes_only_routed_services_for_execution_node(tmp_pat
     assert sanitized["services"]["api"]["environment"]["DATABASE_URL"] == "postgres://db/app"
 
 
+def test_prepare_compose_injects_matching_non_secret_build_args(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {
+            "services": {
+                "frontend": {
+                    "build": {
+                        "context": ".",
+                        "dockerfile": "Dockerfile",
+                        "args": {
+                            "VITE_API_BASE_URL": "http://localhost:5185",
+                            "JWT_SIGNING_KEY": "default",
+                        },
+                    },
+                }
+            }
+        },
+    )
+
+    sanitized_file, logs = prepare_compose_file(
+        compose_file,
+        str(tmp_path),
+        "project-1",
+        "deployment-1",
+        "oc-project",
+        [{"serviceName": "frontend", "routeSlug": "app", "internalPort": 80}],
+        [
+            {
+                "serviceName": "frontend",
+                "key": "VITE_API_BASE_URL",
+                "value": "http://api-chat.localhost",
+                "isSecret": False,
+            },
+            {
+                "serviceName": "frontend",
+                "key": "JWT_SIGNING_KEY",
+                "value": "super-secret",
+                "isSecret": True,
+            },
+        ],
+    )
+
+    with open(sanitized_file, encoding="utf-8") as f:
+        sanitized = yaml.safe_load(f)
+
+    build_args = sanitized["services"]["frontend"]["build"]["args"]
+    assert build_args["VITE_API_BASE_URL"] == "http://api-chat.localhost"
+    assert build_args["JWT_SIGNING_KEY"] == "default"
+    assert sanitized["services"]["frontend"]["environment"]["JWT_SIGNING_KEY"] == "super-secret"
+    assert "Injected environment variable 'VITE_API_BASE_URL' into build args for service 'frontend'." in logs
+
+
 def test_prepare_compose_does_not_publish_cloudflare_quick_route_ports(tmp_path):
     compose_file = _write_compose(
         tmp_path,

@@ -4,6 +4,18 @@ import uuid
 from config import DATABASE_URL
 from secret_utils import decrypt_secret
 
+MAX_ERROR_MESSAGE_LENGTH = 2000
+
+
+def _truncate_error_message(value):
+    if value is None:
+        return None
+    value = str(value)
+    if len(value) <= MAX_ERROR_MESSAGE_LENGTH:
+        return value
+    return value[: MAX_ERROR_MESSAGE_LENGTH - 15] + "... [truncated]"
+
+
 # Register UUID adapter
 psycopg2.extras.register_uuid()
 
@@ -92,7 +104,7 @@ def update_deployment_status(conn, deployment_id, status, **kwargs):
 
     if "error_message" in kwargs:
         sets.append('"ErrorMessage" = %s')
-        values.append(kwargs["error_message"])
+        values.append(_truncate_error_message(kwargs["error_message"]))
 
     if "image_tag" in kwargs:
         sets.append('"ImageTag" = %s')
@@ -279,7 +291,7 @@ def update_project_deployment_status(conn, deployment_id, status, **kwargs):
 
     if "error_message" in kwargs:
         sets.append('"ErrorMessage" = %s')
-        values.append(kwargs["error_message"])
+        values.append(_truncate_error_message(kwargs["error_message"]))
 
     if "build_logs" in kwargs:
         sets.append('"BuildLogs" = %s')
