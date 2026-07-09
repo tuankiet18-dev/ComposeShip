@@ -1,7 +1,10 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.Services;
 
@@ -60,6 +63,60 @@ builder.Services.AddHttpClient<IAiDeploymentDiagnosisService, AiDeploymentDiagno
 // ── Controllers ──────────────────────────────────
 builder.Services.AddControllers();
 
+// ── Rate Limiting ────────────────────────────────
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("Auth", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:AuthPerMinute", 5),
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+
+    options.AddPolicy("Deploy", context =>
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var partitionKey = userId ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:DeployPerHour", 10),
+                Window = TimeSpan.FromHours(1)
+            });
+    });
+
+    options.AddPolicy("AiDiagnosis", context =>
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var partitionKey = userId ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:AiPerHour", 5),
+                Window = TimeSpan.FromHours(1)
+            });
+    });
+
+    options.AddPolicy("ComposeInspect", context =>
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var partitionKey = userId ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:ComposeInspectPerMinute", 10),
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+});
+
+
 // ── CORS ─────────────────────────────────────────
 // ISSUE #10 FIX: Read allowed origins from config so production domain works.
 // In docker-compose: set CORS_ORIGINS=https://yourdomain.com
@@ -85,6 +142,14 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
 // ── Auto-migrate database ────────────────────────
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue("OneClick:AutoMigrateDatabase", false))
 {
@@ -106,6 +171,7 @@ if (!app.Environment.IsProduction())
 
 app.UseCors();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

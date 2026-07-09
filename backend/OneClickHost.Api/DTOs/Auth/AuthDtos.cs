@@ -4,7 +4,9 @@ namespace OneClickHost.Api.DTOs.Auth;
 
 public record RegisterRequest(
     [Required, EmailAddress] string Email,
-    [Required, MinLength(6)] string Password,
+    [Required, MinLength(8)]
+    [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, and one number.")]
+    string Password,
     [Required, MaxLength(100)] string FullName
 );
 

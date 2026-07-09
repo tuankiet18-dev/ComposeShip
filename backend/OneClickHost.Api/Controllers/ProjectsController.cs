@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.DTOs.Projects;
 using OneClickHost.Api.Services;
 
@@ -86,6 +87,7 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/compose-inspect")]
+    [EnableRateLimiting("ComposeInspect")]
     public async Task<ActionResult<ComposeInspectResponse>> InspectCompose(Guid id, [FromBody] ComposeInspectRequest request)
     {
         try
@@ -143,6 +145,7 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/deploy")]
+    [EnableRateLimiting("Deploy")]
     public async Task<ActionResult<ProjectDeploymentResponse>> DeployProject(Guid id)
     {
         try

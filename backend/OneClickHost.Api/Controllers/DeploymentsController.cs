@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.DTOs.Deployments;
 using OneClickHost.Api.Services;
 
@@ -22,6 +23,7 @@ public class DeploymentsController : ControllerBase
     }
 
     [HttpPost("api/services/{serviceId:guid}/deploy")]
+    [EnableRateLimiting("Deploy")]
     public async Task<ActionResult<DeploymentResponse>> TriggerDeployment(Guid serviceId)
     {
         try
@@ -112,6 +114,7 @@ public class DeploymentsController : ControllerBase
     }
 
     [HttpPost("api/deployments/{id:guid}/ai-diagnosis")]
+    [EnableRateLimiting("AiDiagnosis")]
     public async Task<ActionResult<DeploymentAiDiagnosisResponse>> GenerateAiDiagnosis(Guid id)
     {
         try

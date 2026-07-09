@@ -103,3 +103,9 @@ variable "container_cpu_limit" {
   type        = string
   default     = "0.5"
 }
+
+variable "cloudfront_price_class" {
+  description = "CloudFront edge price class for the dashboard distribution."
+  type        = string
+  default     = "PriceClass_100"
+}

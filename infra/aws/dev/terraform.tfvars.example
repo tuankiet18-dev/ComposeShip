@@ -26,3 +26,6 @@ oneclick_secret_key = "replace-with-another-32-random-character-secret"
 worker_build_timeout   = 900
 container_memory_limit = "256m"
 container_cpu_limit    = "0.5"
+
+# PriceClass_100 keeps the dashboard CDN footprint low-cost for MVP.
+cloudfront_price_class = "PriceClass_100"

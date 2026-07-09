@@ -23,7 +23,7 @@ public class AuthService
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
         if (await _db.Users.AnyAsync(u => u.Email == request.Email))
-            throw new InvalidOperationException("Email already registered.");
+            throw new InvalidOperationException("Registration failed. Email might be invalid or already registered.");
 
         var user = new User
         {

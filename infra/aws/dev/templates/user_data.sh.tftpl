@@ -67,7 +67,7 @@ WORKSPACE_DIR=/tmp/oneclick-workspace
 CONTAINER_MEMORY_LIMIT=${container_memory_limit}
 CONTAINER_CPU_LIMIT=${container_cpu_limit}
 
-NEXT_PUBLIC_API_URL=http://${domain_name}/api
+VITE_API_URL=/api
 
 TRAEFIK_DOMAIN=${domain_name}
 COMPOSE_PROJECT_NAME=oneclick
@@ -76,7 +76,7 @@ ENVEOF
 chown ubuntu:ubuntu .env
 chmod 0640 .env
 
-log "Writing EC2 Traefik dashboard/API routes"
+log "Writing EC2 Traefik API route"
 mkdir -p traefik/dynamic
 cat > traefik/dynamic/dashboard.yml <<ROUTEEOF
 http:
@@ -88,23 +88,11 @@ http:
         - web
       priority: 100
 
-    frontend-router:
-      rule: "Host(\`$DOMAIN_NAME\`)"
-      service: frontend-service
-      entryPoints:
-        - web
-      priority: 1
-
   services:
     api-service:
       loadBalancer:
         servers:
           - url: "http://api:5000"
-
-    frontend-service:
-      loadBalancer:
-        servers:
-          - url: "http://frontend:3000"
 ROUTEEOF
 chown ubuntu:ubuntu traefik/dynamic/dashboard.yml
 

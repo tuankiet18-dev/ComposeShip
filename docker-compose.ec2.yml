@@ -28,9 +28,11 @@ services:
       - "traefik.http.services.api.loadbalancer.server.port=5000"
 
   frontend:
+    profiles:
+      - container-frontend
     build:
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+        VITE_API_URL: ${VITE_API_URL:-/api}
     ports: !reset []
     labels:
       - "traefik.enable=true"

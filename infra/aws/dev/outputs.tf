@@ -4,8 +4,33 @@ output "public_ip" {
 }
 
 output "app_url" {
-  description = "Dashboard URL."
+  description = "Dashboard URL served by CloudFront."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "api_url" {
+  description = "Control-plane API URL through CloudFront."
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}/api"
+}
+
+output "ec2_origin_url" {
+  description = "Direct EC2 Traefik origin URL. Use for API-origin debugging."
   value       = "http://${local.effective_domain}"
+}
+
+output "frontend_bucket_name" {
+  description = "S3 bucket that stores the built dashboard files."
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for dashboard invalidations."
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name."
+  value       = aws_cloudfront_distribution.frontend.domain_name
 }
 
 output "effective_domain" {

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.DTOs.Auth;
 using OneClickHost.Api.Services;
 
@@ -23,21 +24,23 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
+    [EnableRateLimiting("Auth")]
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         try
         {
-            var response = await _authService.RegisterAsync(request);
-            SetAccessTokenCookie(response.Token);
-            return Ok(CreateClientAuthResponse(response));
+            await _authService.RegisterAsync(request);
+            return Accepted(new { message = "Registration processed successfully. Please log in to continue." });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return Conflict(new { message = ex.Message });
+            // Simulate success to prevent email enumeration
+            return Accepted(new { message = "Registration processed successfully. Please log in to continue." });
         }
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting("Auth")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
         try

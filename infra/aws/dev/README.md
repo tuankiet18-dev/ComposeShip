@@ -5,8 +5,10 @@ This Terraform stack creates the EC2-only MVP environment:
 - One Ubuntu EC2 instance, default `t3.medium`
 - One Elastic IP
 - Security group with public HTTP, admin SSH, and optional admin-only Traefik dashboard port
-- Docker, Docker Compose, and the OneClick-Host stack bootstrapped with cloud-init
+- Docker, Docker Compose, and the OneClick-Host API/worker stack bootstrapped with cloud-init
 - PostgreSQL runs as the existing Compose `db` container, not RDS
+- One private S3 bucket for the built dashboard
+- One CloudFront distribution that serves the dashboard from S3 and proxies `/api/*` plus `/health` to the EC2 Traefik origin
 - No purchased domain is required by default. When `domain_name = ""`, the stack uses `<public-ip>.sslip.io` for wildcard DNS.
 
 ## Usage
@@ -38,7 +40,7 @@ This Terraform stack creates the EC2-only MVP environment:
 4. If `domain_name = ""`, no DNS setup is needed. Open the Terraform `app_url` output, for example:
 
    ```text
-   http://13.250.10.20.sslip.io
+   https://d111111abcdef8.cloudfront.net
    ```
 
    User apps will also work as subdomains, for example:
@@ -59,6 +61,15 @@ This Terraform stack creates the EC2-only MVP environment:
    ```text
    terraform output app_url
    ```
+
+7. Build and publish the dashboard to S3/CloudFront:
+
+   ```bash
+   ../../../scripts/deploy-frontend-cloudfront.sh
+   ```
+
+   The frontend is built with `VITE_API_URL=/api`, so browser API calls stay
+   on the same CloudFront origin and CloudFront forwards `/api/*` to EC2.
 
 ## EC2 Operations
 
@@ -101,12 +112,12 @@ curl -i -H "Host: $DOMAIN" http://127.0.0.1/health
 
 Expected results:
 
-- `/` should return the frontend HTML or a frontend response.
+- `/` on the EC2 origin is no longer the primary dashboard route when using S3/CloudFront.
 - `/health` should return the API health payload.
 - `404 page not found` means Traefik received the request but no router matched the `Host` header.
 - `502 Bad Gateway` means Traefik matched a route but could not reach the target container.
 
-If the dynamic route file still points at `localhost`, regenerate it:
+If the dynamic API route file still points at `localhost`, regenerate it:
 
 ```bash
 cd /opt/oneclick-host
@@ -122,23 +133,11 @@ http:
         - web
       priority: 100
 
-    frontend-router:
-      rule: "Host(\`$DOMAIN\`)"
-      service: frontend-service
-      entryPoints:
-        - web
-      priority: 1
-
   services:
     api-service:
       loadBalancer:
         servers:
           - url: "http://api:5000"
-
-    frontend-service:
-      loadBalancer:
-        servers:
-          - url: "http://frontend:3000"
 EOF
 
 sudo docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --force-recreate traefik
@@ -146,9 +145,10 @@ sudo docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --forc
 
 ## Notes
 
-- Public traffic should enter through Traefik on port `80`.
-- The EC2 override removes direct host exposure for Postgres, API, and frontend.
-- Cloud-init rewrites `traefik/dynamic/dashboard.yml` with the effective EC2 domain so the file provider can route the dashboard/API even if Docker provider discovery has issues.
+- Dashboard traffic should enter through CloudFront. API traffic from the dashboard also enters through CloudFront and is forwarded to EC2 on `/api/*`.
+- User app traffic still enters through Traefik on port `80`.
+- The EC2 override removes direct host exposure for Postgres and API. The frontend container is disabled by default with the `container-frontend` Compose profile.
+- Cloud-init rewrites `traefik/dynamic/dashboard.yml` with the effective EC2 domain so the file provider can route the API even if Docker provider discovery has issues.
 - Traefik is also given `DOCKER_API_VERSION=1.44` in `docker-compose.ec2.yml` to avoid Docker provider failures against newer Docker daemons.
 - The Traefik dashboard port is disabled at the security group by default.
 - HTTPS can be added later by opening `443` and adding an ACME resolver in Traefik.
