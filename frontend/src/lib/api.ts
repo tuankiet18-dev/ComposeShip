@@ -347,6 +347,18 @@ export type ComposeInspectResponse = {
   suggestedRoutes: ComposeRoute[];
   suggestedEnvironmentVariables: ComposeEnvVar[];
   stateful: StatefulMetadata;
+  availableFiles: ComposeFileOption[];
+  isDeployable: boolean;
+  validationErrors: string[];
+  warnings: string[];
+};
+
+export type ComposeFileOption = {
+  path: string;
+  kind: "production" | "development" | "standard" | "unknown" | string;
+  isRecommended: boolean;
+  isDeployable: boolean;
+  warnings: string[];
 };
 
 export type StatefulMetadata = {

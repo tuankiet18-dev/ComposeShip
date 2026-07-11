@@ -63,7 +63,19 @@ public record ComposeInspectResponse(
     List<ComposeServiceSuggestion> Services,
     List<ComposeRouteResponse> SuggestedRoutes,
     List<ComposeEnvVarResponse> SuggestedEnvironmentVariables,
-    StatefulMetadataResponse Stateful
+    StatefulMetadataResponse Stateful,
+    List<ComposeFileOptionResponse> AvailableFiles,
+    bool IsDeployable,
+    List<string> ValidationErrors,
+    List<string> Warnings
+);
+
+public record ComposeFileOptionResponse(
+    string Path,
+    string Kind,
+    bool IsRecommended,
+    bool IsDeployable,
+    List<string> Warnings
 );
 
 public record ComposeServiceSuggestion(

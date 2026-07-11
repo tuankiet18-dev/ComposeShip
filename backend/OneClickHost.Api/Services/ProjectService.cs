@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.Projects;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Models;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -15,7 +16,16 @@ public class ProjectService
     private const string CloudflareQuickExposure = "cloudflare_quick";
     private static readonly Regex SafeFileName = new("[^a-zA-Z0-9.-]+", RegexOptions.Compiled);
     private static readonly HashSet<string> ComposeExposureProviders = [TraefikExposure, CloudflareQuickExposure];
-    private static readonly string[] ComposeFileCandidates = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];
+    private static readonly string[] ComposeFileCandidates = [
+        "docker-compose.prod.yml",
+        "docker-compose.production.yml",
+        "compose.prod.yml",
+        "compose.production.yml",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml"
+    ];
     private static readonly HttpClient ComposeHttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(20)
@@ -108,7 +118,8 @@ public class ProjectService
         if (string.IsNullOrWhiteSpace(subfolder) && subfolderFromUrl is not null)
             subfolder = subfolderFromUrl;
 
-        var (resolvedComposeFile, yamlContent) = await FetchComposeYamlAsync(owner, repo, branch, subfolder, composeFile);
+        var inspection = await LoadComposeInspectionAsync(owner, repo, branch, subfolder, composeFile);
+        var yamlContent = inspection.Selected.YamlContent;
 
         var services = ParseComposeServices(yamlContent);
         if (services.Count == 0)
@@ -131,7 +142,21 @@ public class ProjectService
         // Environment variables are intentionally not auto-filled. The same
         // key can belong to multiple services with different values, so users
         // should enter them explicitly in the UI.
-        return new ComposeInspectResponse(resolvedComposeFile, services, suggestedRoutes, [], DetectStatefulMetadata(yamlContent));
+        return new ComposeInspectResponse(
+            inspection.Selected.Path,
+            services,
+            suggestedRoutes,
+            [],
+            DetectStatefulMetadata(yamlContent),
+            inspection.Files.Select(file => new ComposeFileOptionResponse(
+                file.Path,
+                file.Kind,
+                file.Path == inspection.Recommended.Path,
+                file.IsDeployable,
+                file.Warnings)).ToList(),
+            inspection.Selected.IsDeployable,
+            inspection.Selected.Errors,
+            inspection.Selected.Warnings);
     }
 
     public async Task<DeploymentGraphResponse> GetDeploymentGraphAsync(Guid projectId, Guid userId)
@@ -208,16 +233,29 @@ public class ProjectService
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
+        var branch = string.IsNullOrWhiteSpace(request.Branch) ? "main" : request.Branch.Trim();
+        var subfolder = NormalizeRelativePath(request.Subfolder);
+        var composeFile = NormalizeRelativePath(request.ComposeFile);
+        var (owner, repo, branchFromUrl, subfolderFromUrl) = ParseGitHubRepo(request.RepoUrl);
+        if (request.Branch is null && branchFromUrl is not null)
+            branch = branchFromUrl;
+        if (string.IsNullOrWhiteSpace(subfolder) && subfolderFromUrl is not null)
+            subfolder = subfolderFromUrl;
+
+        var inspection = await LoadComposeInspectionAsync(owner, repo, branch, subfolder, composeFile);
+        EnsureDeployable(inspection.Selected);
+
         var routes = NormalizeRoutes(request.Routes);
+        ValidateRoutes(routes, ParseComposeServices(inspection.Selected.YamlContent));
         var envVars = NormalizeEnvVars(request.EnvironmentVariables ?? [], project.ComposeEnvJson);
 
         _quotaService.EnsureComposeLimitsAsync(routes.Count, envVars.Count);
 
         project.DeploymentMode = "compose";
         project.RepoUrl = request.RepoUrl.Trim();
-        project.Branch = string.IsNullOrWhiteSpace(request.Branch) ? "main" : request.Branch.Trim();
-        project.Subfolder = NormalizeRelativePath(request.Subfolder);
-        project.ComposeFile = NormalizeRelativePath(request.ComposeFile);
+        project.Branch = branch;
+        project.Subfolder = subfolder;
+        project.ComposeFile = inspection.Selected.Path;
         project.ComposeProjectName = ToComposeProjectName(project.Id, project.Name);
         project.ComposeRoutesJson = JsonSerializer.Serialize(routes, JsonOptions);
         project.ComposeEnvJson = JsonSerializer.Serialize(envVars, JsonOptions);
@@ -243,6 +281,12 @@ public class ProjectService
             throw new ArgumentException("Compose repository URL is required.");
         if (ReadRoutes(project.ComposeRoutesJson).Count == 0)
             throw new ArgumentException("At least one public Compose route is required.");
+
+        var deploymentInspection = await LoadProjectComposeInspectionAsync(project);
+        EnsureDeployable(deploymentInspection.Selected);
+        ValidateRoutes(ReadRoutes(project.ComposeRoutesJson), ParseComposeServices(deploymentInspection.Selected.YamlContent));
+        if (string.IsNullOrWhiteSpace(project.ComposeFile))
+            project.ComposeFile = deploymentInspection.Selected.Path;
 
         var wasUnhealthy = project.Status == "unhealthy";
         var latestVersion = project.ProjectDeployments.Any()
@@ -711,6 +755,217 @@ public class ProjectService
 
         throw new ArgumentException("Could not find a compose file in this repository. Set the branch, subfolder, or compose file path and try again.");
     }
+
+    private async Task<ComposeInspectionResult> LoadProjectComposeInspectionAsync(Project project)
+    {
+        var branch = string.IsNullOrWhiteSpace(project.Branch) ? "main" : project.Branch.Trim();
+        var subfolder = NormalizeRelativePath(project.Subfolder);
+        var composeFile = NormalizeRelativePath(project.ComposeFile);
+        var (owner, repo, branchFromUrl, subfolderFromUrl) = ParseGitHubRepo(project.RepoUrl!);
+
+        if (string.IsNullOrWhiteSpace(project.Branch) && branchFromUrl is not null)
+            branch = branchFromUrl;
+        if (string.IsNullOrWhiteSpace(subfolder) && subfolderFromUrl is not null)
+            subfolder = subfolderFromUrl;
+
+        return await LoadComposeInspectionAsync(owner, repo, branch, subfolder, composeFile);
+    }
+
+    private static async Task<ComposeInspectionResult> LoadComposeInspectionAsync(
+        string owner,
+        string repo,
+        string branch,
+        string? subfolder,
+        string? requestedComposeFile)
+    {
+        var candidatePaths = ComposeFileCandidates
+            .Append(requestedComposeFile)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var files = new List<ComposeFileAssessment>();
+        foreach (var path in candidatePaths)
+        {
+            var rawPath = JoinRepoPath(subfolder, path!);
+            var url = $"https://raw.githubusercontent.com/{owner}/{repo}/{Uri.EscapeDataString(branch)}/{rawPath}";
+            var response = await ComposeHttpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+                continue;
+
+            files.Add(AnalyzeComposeFile(path!, await response.Content.ReadAsStringAsync()));
+        }
+
+        if (files.Count == 0)
+            throw new ArgumentException("Could not find a compose file in this repository. Set the branch, subfolder, or compose file path and try again.");
+
+        var selected = requestedComposeFile is null
+            ? null
+            : files.FirstOrDefault(file => file.Path.Equals(requestedComposeFile, StringComparison.OrdinalIgnoreCase));
+        if (requestedComposeFile is not null && selected is null)
+            throw new ArgumentException($"Configured compose file not found: {requestedComposeFile}");
+
+        var recommended = files.FirstOrDefault(file => file.IsDeployable && file.Kind == "production")
+            ?? files.FirstOrDefault(file => file.IsDeployable)
+            ?? files[0];
+
+        return new ComposeInspectionResult(files, selected ?? recommended, recommended);
+    }
+
+    private static ComposeFileAssessment AnalyzeComposeFile(string path, string yamlContent)
+    {
+        var warnings = new List<string>();
+        var errors = new List<string>();
+        var isDevelopment = path.Contains("dev", StringComparison.OrdinalIgnoreCase);
+        var isProduction = path.Contains("prod", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("production", StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            var yaml = new YamlStream();
+            yaml.Load(new StringReader(yamlContent));
+            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root || !TryGetMapping(root, "services", out var servicesNode))
+                return new ComposeFileAssessment(path, "unknown", false, ["Compose file must contain at least one service."], warnings, yamlContent);
+
+            foreach (var serviceEntry in servicesNode.Children)
+            {
+                var serviceName = ((YamlScalarNode)serviceEntry.Key).Value?.Trim() ?? "service";
+                if (serviceEntry.Value is not YamlMappingNode service)
+                    continue;
+
+                if (HasRelativeBindMount(service))
+                {
+                    isDevelopment = true;
+                    errors.Add($"Service '{serviceName}' mounts repository files from the host. Local development mounts cannot run after OneClickHost cleans its temporary workspace.");
+                }
+
+                var target = TryGetBuildTarget(service);
+                if (target is not null && (target.Equals("dev", StringComparison.OrdinalIgnoreCase) || target.Equals("development", StringComparison.OrdinalIgnoreCase)))
+                {
+                    isDevelopment = true;
+                    errors.Add($"Service '{serviceName}' builds Docker target '{target}', which is intended for local development. Choose a production Compose file or a final runtime target.");
+                }
+                else if (target is not null && (target.Equals("final", StringComparison.OrdinalIgnoreCase) || target.Equals("prod", StringComparison.OrdinalIgnoreCase) || target.Equals("production", StringComparison.OrdinalIgnoreCase)))
+                {
+                    isProduction = true;
+                }
+
+                var command = TryGetScalar(service, "command") ?? "";
+                if (command.Contains("dotnet watch", StringComparison.OrdinalIgnoreCase)
+                    || command.Contains("vite", StringComparison.OrdinalIgnoreCase)
+                    || command.Contains("npm run dev", StringComparison.OrdinalIgnoreCase))
+                {
+                    isDevelopment = true;
+                    errors.Add($"Service '{serviceName}' starts a development watcher. Production deployments must start the built application directly.");
+                }
+
+                foreach (var (key, value) in GetEnvironmentValues(service))
+                {
+                    if (!value.Contains("${", StringComparison.Ordinal))
+                        continue;
+
+                    warnings.Add($"Service '{serviceName}' uses Compose interpolation for '{key}'. Configure the final value directly in the Environment section; per-service values are not shared as global Compose substitutions.");
+                    if (LooksSensitiveEnvironmentKey(key) && value.Contains(":-", StringComparison.Ordinal))
+                        warnings.Add($"Service '{serviceName}' has a fallback value for sensitive setting '{key}'. Replace it with a project secret before deployment.");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is YamlDotNet.Core.YamlException or InvalidOperationException)
+        {
+            errors.Add("Compose YAML could not be parsed: " + ex.Message);
+        }
+
+        var kind = isDevelopment ? "development" : isProduction ? "production" : "standard";
+        return new ComposeFileAssessment(path, kind, errors.Count == 0, errors, warnings.Distinct().ToList(), yamlContent);
+    }
+
+    private static void EnsureDeployable(ComposeFileAssessment assessment)
+    {
+        if (!assessment.IsDeployable)
+            throw new ComposeValidationException(assessment.Errors);
+    }
+
+    private static void ValidateRoutes(List<ComposeRouteResponse> routes, List<ComposeServiceSuggestion> services)
+    {
+        var byName = services.ToDictionary(service => service.Name, StringComparer.OrdinalIgnoreCase);
+        var issues = new List<string>();
+        foreach (var route in routes)
+        {
+            if (!byName.TryGetValue(route.ServiceName, out var service))
+            {
+                issues.Add($"Route '{route.RouteSlug}' references missing service '{route.ServiceName}'.");
+                continue;
+            }
+
+            if (service.Ports.Count > 0 && !service.Ports.Contains(route.InternalPort))
+                issues.Add($"Route '{route.RouteSlug}' uses port {route.InternalPort}, but service '{route.ServiceName}' exposes {string.Join(", ", service.Ports)} in this Compose file.");
+        }
+
+        if (issues.Count > 0)
+            throw new ComposeValidationException(issues);
+    }
+
+    private static string? TryGetBuildTarget(YamlMappingNode serviceNode) =>
+        TryGetNode(serviceNode, "build") is YamlMappingNode build ? TryGetScalar(build, "target") : null;
+
+    private static bool HasRelativeBindMount(YamlMappingNode serviceNode)
+    {
+        if (TryGetNode(serviceNode, "volumes") is not YamlSequenceNode volumes)
+            return false;
+
+        foreach (var volume in volumes.Children)
+        {
+            if (volume is YamlScalarNode scalar && IsRelativeHostPath(scalar.Value?.Split(':', 2)[0]))
+                return true;
+            if (volume is YamlMappingNode mapping)
+            {
+                var type = TryGetScalar(mapping, "type");
+                var source = TryGetScalar(mapping, "source") ?? TryGetScalar(mapping, "src");
+                if ((string.IsNullOrWhiteSpace(type) || type.Equals("bind", StringComparison.OrdinalIgnoreCase)) && IsRelativeHostPath(source))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRelativeHostPath(string? source) =>
+        source is "." or ".." || source?.StartsWith("./", StringComparison.Ordinal) == true || source?.StartsWith("../", StringComparison.Ordinal) == true;
+
+    private static IEnumerable<(string Key, string Value)> GetEnvironmentValues(YamlMappingNode serviceNode)
+    {
+        return TryGetNode(serviceNode, "environment") switch
+        {
+            YamlMappingNode environment => environment.Children
+                .Where(child => child.Key is YamlScalarNode && child.Value is YamlScalarNode)
+                .Select(child => (((YamlScalarNode)child.Key).Value ?? "", ((YamlScalarNode)child.Value).Value ?? "")),
+            YamlSequenceNode environment => environment.Children
+                .OfType<YamlScalarNode>()
+                .Select(item => item.Value?.Split('=', 2) ?? [])
+                .Where(parts => parts.Length == 2)
+                .Select(parts => (parts[0].Trim(), parts[1])),
+            _ => []
+        };
+    }
+
+    private static bool LooksSensitiveEnvironmentKey(string key) =>
+        key.Contains("password", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("secret", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("token", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("signing", StringComparison.OrdinalIgnoreCase);
+
+    private sealed record ComposeFileAssessment(
+        string Path,
+        string Kind,
+        bool IsDeployable,
+        List<string> Errors,
+        List<string> Warnings,
+        string YamlContent);
+
+    private sealed record ComposeInspectionResult(
+        List<ComposeFileAssessment> Files,
+        ComposeFileAssessment Selected,
+        ComposeFileAssessment Recommended);
 
     private static string? NormalizeRelativePath(string? path)
     {

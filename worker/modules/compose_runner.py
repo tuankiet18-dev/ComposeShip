@@ -35,7 +35,16 @@ TRAEFIK_EXPOSURE = "traefik"
 CLOUDFLARE_QUICK_EXPOSURE = "cloudflare_quick"
 CLOUDFLARE_QUICK_URL_RE = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com", re.IGNORECASE)
 
-COMPOSE_CANDIDATES = ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
+COMPOSE_CANDIDATES = (
+    "docker-compose.prod.yml",
+    "docker-compose.production.yml",
+    "compose.prod.yml",
+    "compose.production.yml",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+)
 BLOCKED_SERVICE_KEYS = {
     "privileged",
     "devices",
@@ -45,7 +54,6 @@ BLOCKED_SERVICE_KEYS = {
 }
 BLOCKED_HOST_MODE_KEYS = ("network_mode", "pid", "ipc", "uts", "userns_mode")
 SENSITIVE_BINDS = ("/", "/etc", "/proc", "/sys", "/var/lib/docker", "/var/run/docker.sock")
-APP_CODE_TARGETS = ("/app", "/code", "/src", "/workspace", "/usr/src/app")
 INFRA_SERVICE_HINTS = (
     "postgres",
     "timescale",
@@ -146,11 +154,6 @@ def _resolve_under_source(source_path: str, relative_path: str, description: str
     return str(resolved)
 
 
-def _is_app_code_target(target: str) -> bool:
-    normalized = target.replace("\\", "/").rstrip("/")
-    return normalized in APP_CODE_TARGETS
-
-
 def _sanitize_env_file(service_name: str, service: dict[str, Any], source_path: str, logs: list[str]):
     env_file = service.get("env_file")
     if not env_file:
@@ -188,7 +191,6 @@ def _sanitize_volumes(service_name: str, service: dict[str, Any], source_path: s
 
     sanitized: list[Any] = []
     for volume in _as_list(volumes):
-        remove = False
         if isinstance(volume, str):
             if re.match(r"^[A-Za-z]:[\\/]", volume):
                 raise RuntimeError(f"Blocked absolute host bind mount in service '{service_name}': {volume}")
@@ -199,7 +201,10 @@ def _sanitize_volumes(service_name: str, service: dict[str, Any], source_path: s
                 raise RuntimeError(f"Blocked absolute host bind mount in service '{service_name}': {source}")
             if _is_relative_host_path(source):
                 _resolve_under_source(source_path, source, f"volume bind in service '{service_name}'")
-                remove = _is_app_code_target(target)
+                raise RuntimeError(
+                    f"Local bind mount '{source}:{target}' in service '{service_name}' is not supported for deployment. "
+                    "OneClickHost removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
+                )
         elif isinstance(volume, dict) and volume.get("type") in (None, "bind"):
             source = str(volume.get("source") or volume.get("src") or "")
             target = str(volume.get("target") or volume.get("dst") or volume.get("destination") or "")
@@ -207,11 +212,10 @@ def _sanitize_volumes(service_name: str, service: dict[str, Any], source_path: s
                 raise RuntimeError(f"Blocked absolute host bind mount in service '{service_name}': {source}")
             if _is_relative_host_path(source):
                 _resolve_under_source(source_path, source, f"volume bind in service '{service_name}'")
-                remove = _is_app_code_target(target)
-
-        if remove:
-            logs.append(f"Removed source-code bind mount from service '{service_name}' so the built image is used after deploy.")
-            continue
+                raise RuntimeError(
+                    f"Local bind mount '{source}:{target}' in service '{service_name}' is not supported for deployment. "
+                    "OneClickHost removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
+                )
         sanitized.append(volume)
 
     if sanitized:
@@ -749,6 +753,29 @@ def _assert_stack_running(compose_project_name: str):
             bad.append(f"{name}: health={health}")
     if bad:
         raise RuntimeError("Compose stack has unhealthy containers: " + "; ".join(bad))
+
+
+def collect_compose_runtime_diagnostics(compose_project_name: str) -> str:
+    """Capture bounded runtime context before the deployment workspace is removed."""
+    lines = ["=== Compose runtime diagnostics ==="]
+    try:
+        lines.append(_run(["docker", "compose", "-p", compose_project_name, "ps", "--all", "--format", "json"], timeout=30))
+    except Exception as error:
+        lines.append(f"Could not read compose status: {error}")
+
+    try:
+        containers = _client().containers.list(all=True, filters={"label": f"com.docker.compose.project={compose_project_name}"})
+        for container in containers:
+            try:
+                logs = container.logs(stdout=True, stderr=True, tail=120).decode("utf-8", errors="replace").strip()
+                lines.append(f"=== Container logs: {container.name} ===")
+                lines.append(logs or "(no logs captured)")
+            except APIError as error:
+                lines.append(f"Could not read logs for {container.name}: {error}")
+    except Exception as error:
+        lines.append(f"Could not enumerate compose containers: {error}")
+
+    return "\n".join(lines)
 
 
 def _run_post_start_commands(compose_project_name: str, commands: str | None):

@@ -49,6 +49,7 @@ from modules.build_runner import (
     write_public_build_env,
 )
 from modules.compose_runner import (
+    collect_compose_runtime_diagnostics,
     cleanup_compose_stack,
     deploy_compose_stack,
     find_compose_file,
@@ -105,7 +106,7 @@ def _failure_category(error: Exception) -> str:
     value = str(error).lower()
     if "clone" in value or "repository" in value or "github" in value:
         return "clone"
-    if "compose file" in value or "blocked" in value or "invalid" in value or "unsafe" in value:
+    if "compose file" in value or "blocked" in value or "invalid" in value or "unsafe" in value or "bind mount" in value or "development" in value:
         return "validation"
     if "build" in value:
         return "build"
@@ -174,6 +175,7 @@ def process_project_deployment(conn, deployment: dict):
     except Exception as e:
         error_msg = str(e)
         all_logs.append(f"\n❌ ERROR: {error_msg}")
+        all_logs.append(collect_compose_runtime_diagnostics(compose_project_name))
         all_logs.append(traceback.format_exc())
         update_project_deployment_status(
             conn,
@@ -268,6 +270,7 @@ def process_project_deployment_lease(client: ExecutionNodeClient, deployment: di
     except Exception as e:
         error_msg = str(e)
         all_logs.append(f"\nERROR: {error_msg}")
+        all_logs.append(collect_compose_runtime_diagnostics(compose_project_name))
         all_logs.append(traceback.format_exc())
         client.event(
             deployment_id,

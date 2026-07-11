@@ -88,6 +88,10 @@ public class ProjectsController : ControllerBase
         {
             return NotFound(new { message = "Project not found." });
         }
+        catch (ComposeValidationException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message, issues = ex.Issues });
+        }
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
@@ -169,6 +173,10 @@ public class ProjectsController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "Project not found." });
+        }
+        catch (ComposeValidationException ex)
+        {
+            return UnprocessableEntity(new { message = ex.Message, issues = ex.Issues });
         }
         catch (ArgumentException ex)
         {

@@ -66,7 +66,7 @@ export function ComposeStackPanel({
   const [repoUrl, setRepoUrl] = useState(config?.repoUrl || "");
   const [branch, setBranch] = useState(config?.branch || "main");
   const [subfolder, setSubfolder] = useState(config?.subfolder || "");
-  const [composeFile, setComposeFile] = useState(config?.composeFile || "docker-compose.yml");
+  const [composeFile, setComposeFile] = useState(config?.composeFile || "");
   const [routes, setRoutes] = useState<ComposeRoute[]>(config?.routes || []);
   const [envVars, setEnvVars] = useState<ComposeEnvVar[]>(config?.environmentVariables || []);
   const [postStartCommands, setPostStartCommands] = useState(config?.postStartCommands || "");
@@ -79,7 +79,7 @@ export function ComposeStackPanel({
     setRepoUrl(config?.repoUrl || "");
     setBranch(config?.branch || "main");
     setSubfolder(config?.subfolder || "");
-    setComposeFile(config?.composeFile || "docker-compose.yml");
+    setComposeFile(config?.composeFile || "");
     setRoutes(config?.routes || []);
     setEnvVars(config?.environmentVariables || []);
     setPostStartCommands(config?.postStartCommands || "");
@@ -99,7 +99,12 @@ export function ComposeStackPanel({
   const stateful = inspectResult?.stateful || config?.stateful || null;
   const duplicateRouteSlugs = findDuplicates(routes.map((route) => route.routeSlug.trim()).filter(Boolean));
   const duplicateEnvKeys = findDuplicates(envVars.map((envVar) => `${envVar.serviceName}:${envVar.key}`).filter((key) => !key.endsWith(":")));
-  const canSave = repoUrl.trim().length > 0 && duplicateRouteSlugs.length === 0 && duplicateEnvKeys.length === 0;
+  const inspectedCurrentFile = inspectResult?.composeFile === composeFile;
+  const canSave = repoUrl.trim().length > 0
+    && duplicateRouteSlugs.length === 0
+    && duplicateEnvKeys.length === 0
+    && inspectedCurrentFile
+    && Boolean(inspectResult?.isDeployable);
   const savedConfigReady = Boolean(config?.repoUrl && config.routes.length > 0);
   const workflowSteps = [
     { label: "Source", detail: repoUrl ? "Repo selected" : "Add repo", state: repoUrl ? "done" : "current" },
@@ -119,16 +124,27 @@ export function ComposeStackPanel({
       });
       setInspectResult(result);
       setComposeFile(result.composeFile);
-      if (routes.length === 0) setRoutes(result.suggestedRoutes);
-      if (envVars.length === 0 && result.suggestedEnvironmentVariables.length > 0) {
-        setEnvVars(result.suggestedEnvironmentVariables);
-      }
-      toast.success("Compose file inspected");
+      if (result.isDeployable) toast.success("Production Compose file inspected");
+      else toast.error("This Compose file is for local development and cannot be deployed");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not inspect Compose file");
     } finally {
       setInspecting(false);
     }
+  };
+
+  const applyDetectedConfiguration = () => {
+    if (!inspectResult?.isDeployable) {
+      toast.error("Choose a production-ready Compose file before applying routes");
+      return;
+    }
+
+    setComposeFile(inspectResult.composeFile);
+    setRoutes(inspectResult.suggestedRoutes);
+    if (envVars.length === 0 && inspectResult.suggestedEnvironmentVariables.length > 0) {
+      setEnvVars(inspectResult.suggestedEnvironmentVariables);
+    }
+    toast.success("Detected routes applied. Review environment values before saving.");
   };
 
   const saveConfig = async () => {
@@ -231,6 +247,10 @@ export function ComposeStackPanel({
               {inspecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Inspect
             </Button>
+            <Button type="button" variant="outline" onClick={applyDetectedConfiguration} disabled={!inspectedCurrentFile || !inspectResult?.isDeployable}>
+              <CheckCircle2 className="h-4 w-4" />
+              Apply detected setup
+            </Button>
             <Button type="button" onClick={saveConfig} disabled={saving || !canSave}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save config
@@ -254,9 +274,37 @@ export function ComposeStackPanel({
               <Input id="compose-subfolder" value={subfolder} onChange={(event) => setSubfolder(event.target.value)} placeholder="apps/web" />
             </Field>
             <Field label="Compose file" htmlFor="compose-file">
-              <Input id="compose-file" value={composeFile} onChange={(event) => setComposeFile(event.target.value)} placeholder="docker-compose.yml" />
+              {inspectResult?.availableFiles.length ? (
+                <Select value={composeFile} onValueChange={setComposeFile}>
+                  <SelectTrigger id="compose-file">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inspectResult.availableFiles.map((file) => (
+                      <SelectItem key={file.path} value={file.path}>
+                        {file.path}{file.isRecommended ? " (recommended)" : ""}{file.kind === "development" ? " - local only" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input id="compose-file" value={composeFile} onChange={(event) => { setComposeFile(event.target.value); setInspectResult(null); }} placeholder="docker-compose.prod.yml" />
+              )}
             </Field>
           </div>
+
+          {inspectResult && inspectedCurrentFile && (
+            <div className={cn("rounded-md border p-3 text-sm", inspectResult.isDeployable ? "border-success/30 bg-success/10" : "border-destructive/30 bg-destructive/10")}>
+              <div className="flex items-start gap-3">
+                {inspectResult.isDeployable ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" /> : <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />}
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">{inspectResult.isDeployable ? "Ready for production deployment" : "Local development configuration detected"}</p>
+                  {inspectResult.validationErrors.map((issue) => <p key={issue} className="text-muted-foreground">{issue}</p>)}
+                  {inspectResult.warnings.map((warning) => <p key={warning} className="text-muted-foreground">{warning}</p>)}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-md border bg-muted/30 p-3">
             <div className="flex items-start gap-3">
@@ -290,7 +338,7 @@ export function ComposeStackPanel({
               <div className="min-w-0">
                 <p className="font-medium">Configuration needs attention</p>
                 <p className="mt-1 text-muted-foreground">
-                  Add a repository and resolve any duplicate route slugs or environment keys before saving.
+                  Inspect a production-ready Compose file, then resolve any duplicate route slugs or environment keys before saving.
                 </p>
               </div>
             </div>

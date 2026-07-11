@@ -15,14 +15,14 @@ Use it to pass phase instructions, implementation reports, review feedback, and 
 
 ## Current Phase
 
-Phase: `2 - Runtime Quota: 1 Active Project Per User`
+Phase: `2.5 - Compose Deploy Safety & Clarity`
 
 Status: `PASS`
 
-Owner: `Antigravity`
+Owner: `Codex`
 
 Goal:
-Enforce the MVP rule that each self-serve user can run only one project at a time.
+Make production Compose deployment understandable and safe before a worker creates containers.
 
 ## Phase Instructions For Antigravity
 
@@ -149,16 +149,37 @@ Phase 3 execution direction:
 - The API may acknowledge the requested operation immediately, but the frontend must represent it as an in-progress operation until worker confirmation is observable through the project status.
 - Required acceptance path: deploy Compose project A, request stop or delete, confirm project B is still blocked while A is cleaning up, then confirm B can deploy only after A reaches the worker-confirmed terminal state.
 
+## Phase 2.5 Implementation And Review
+
+Review Decision: `PASS`
+
+Summary:
+- Compose inspection now discovers known Compose files, recommends production-ready files, and explains why a local-development file cannot deploy.
+- Saving or deploying a Compose configuration with a relative source bind mount, `dev` target, or development watcher returns `422 Unprocessable Entity` before a worker job is queued.
+- The worker rejects all relative host bind mounts as a final safeguard, retains named data volumes, and captures container status/logs before cleanup on a failed Compose deployment.
+- The dashboard requires a successful inspection before save, lets users choose discovered files, and applies detected route ports explicitly instead of preserving stale routes silently.
+
+Validation:
+- Backend build and test console: PASS.
+- Frontend lint and production build: PASS.
+- Local API smoke: development Compose inspect returned `200` with validation errors; saving it returned `422`. Default inspection selected `docker-compose.prod.yml`; stale frontend port `5173` returned `422`; production routes `8080` and `80` saved with `200`.
+- Worker smoke: nested source bind mount was rejected; named PostgreSQL data volume was retained.
+
+Residual risks:
+- Worker `pytest` is not installed in the current container image, so the new Python tests were smoke-tested through the worker runtime rather than collected by pytest.
+- Existing failed deployments need a later cleanup action; Phase 3 owns the stop/delete lifecycle and UI removal contract.
+
 ## Phase Queue
 
 1. `Phase 1 - Public Signup Safety`
 2. `Phase 2 - Runtime Quota: 1 Active Project Per User`
-3. `Phase 3 - Stop/Delete Releases Runtime Slot`
-4. `Phase 4 - Worker Resource Guardrails`
-5. `Phase 5 - HTTPS Baseline`
-6. `Phase 6 - Production Smoke Test Suite`
-7. `Phase 7 - Observability And Admin Recovery`
-8. `Phase 8 - Release Gate`
+3. `Phase 2.5 - Compose Deploy Safety & Clarity`
+4. `Phase 3 - Stop/Delete Releases Runtime Slot`
+5. `Phase 4 - Worker Resource Guardrails`
+6. `Phase 5 - HTTPS Baseline`
+7. `Phase 6 - Production Smoke Test Suite`
+8. `Phase 7 - Observability And Admin Recovery`
+9. `Phase 8 - Release Gate`
 
 ## Report Template For Antigravity
 

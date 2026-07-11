@@ -45,6 +45,61 @@ def test_prepare_compose_blocks_docker_socket_mount(tmp_path):
         )
 
 
+def test_prepare_compose_rejects_source_bind_mount_at_nested_app_path(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {
+            "services": {
+                "api": {
+                    "build": ".",
+                    "volumes": ["./src:/src/ChatApp.API"],
+                }
+            }
+        },
+    )
+    (tmp_path / "src").mkdir()
+
+    with pytest.raises(RuntimeError, match="Local bind mount"):
+        prepare_compose_file(
+            compose_file,
+            str(tmp_path),
+            "project-1",
+            "deployment-1",
+            "oc-project",
+            [{"serviceName": "api", "routeSlug": "api", "internalPort": 8000}],
+            [],
+        )
+
+
+def test_prepare_compose_keeps_named_data_volume(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {
+            "services": {
+                "postgres": {
+                    "image": "postgres:16-alpine",
+                    "volumes": ["postgres_data:/var/lib/postgresql/data"],
+                }
+            },
+            "volumes": {"postgres_data": {}},
+        },
+    )
+
+    sanitized_file, _ = prepare_compose_file(
+        compose_file,
+        str(tmp_path),
+        "project-1",
+        "deployment-1",
+        "oc-project",
+        [],
+        [],
+    )
+
+    with open(sanitized_file, encoding="utf-8") as f:
+        sanitized = yaml.safe_load(f)
+    assert sanitized["services"]["postgres"]["volumes"] == ["postgres_data:/var/lib/postgresql/data"]
+
+
 def test_prepare_compose_blocks_external_volumes(tmp_path):
     compose_file = _write_compose(
         tmp_path,
