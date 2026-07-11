@@ -8,13 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="YamlDotNet" Version="17.1.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.7" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\OneClickHost.Api\DTOs\Projects\ProjectDtos.cs" Link="ProjectDtos.cs" />
-    <Compile Include="..\OneClickHost.Api\Services\DeploymentGraphParser.cs" Link="DeploymentGraphParser.cs" />
-    <Compile Include="..\OneClickHost.Api\Services\ComposeServiceListParser.cs" Link="ComposeServiceListParser.cs" />
+    <ProjectReference Include="..\OneClickHost.Api\OneClickHost.Api.csproj" />
   </ItemGroup>
 
 </Project>

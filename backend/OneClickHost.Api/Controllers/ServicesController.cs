@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OneClickHost.Api.DTOs.Services;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Services;
 
 namespace OneClickHost.Api.Controllers;
@@ -48,6 +49,10 @@ public class ServicesController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "Project not found." });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -154,6 +159,10 @@ public class ServicesController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.DTOs.Deployments;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Services;
 
 namespace OneClickHost.Api.Controllers;
@@ -35,6 +36,10 @@ public class DeploymentsController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "Service not found." });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 

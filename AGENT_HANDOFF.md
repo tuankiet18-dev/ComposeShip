@@ -17,7 +17,7 @@ Use it to pass phase instructions, implementation reports, review feedback, and 
 
 Phase: `2 - Runtime Quota: 1 Active Project Per User`
 
-Status: `READY_FOR_ANTIGRAVITY`
+Status: `PASS`
 
 Owner: `Antigravity`
 
@@ -71,44 +71,83 @@ Suggested validation:
 - Add or run tests for active project conflict and same-project redeploy.
 - If frontend changes are made: `npm run lint` and `npm run build` in `frontend`.
 
+## Phase 2 Plan Review
+
+Plan Decision: `APPROVED_WITH_CONDITIONS`
+
+Codex notes for Antigravity:
+- The proposed `QuotaService` direction is approved. Begin implementation, but keep the change limited to Phase 2 runtime quota and clear quota errors.
+- Use the current repo as source of truth. `implementation_plan.md` contains some older/general architecture text; do not infer framework/runtime changes from it.
+- Active-project detection must cover project-level Compose deployments and the older service-level deployment path. A user must not be able to run project B through `POST /api/services/{serviceId}/deploy` while project A is active.
+- Treat active statuses as: `queued`, `cloning`, `building`, `deploying`, `live`, `unhealthy`, `stopping`. Treat releasable/inactive statuses as: `stopped`, `failed`, `deleting`. Also account for current default statuses like `active`, `created`, or null-ish legacy values so brand-new projects do not consume the runtime slot before first deploy.
+- Do not block redeploying the same active project. For service-level deploys, "same project" means another service under the same `ProjectId` may be redeployed during that project's active lifecycle.
+- Add quota checks inside service methods before creating queued deployment rows, not only in controllers. Controllers should only translate expected quota exceptions into API responses.
+- Prefer one consistent `QuotaExceededException` response shape with `{ "message": "<actionable message>" }` and `409 Conflict` for active-runtime conflicts and quota caps.
+- Add max env-var checks for both compose env vars (`Project.ComposeEnvJson`) and classic service env vars (`Service.EnvironmentVariables` via `PUT /api/services/{serviceId}/env`), since both can consume memory/secrets storage.
+- Be mindful of concurrent deploy requests. The MVP can start with a transactional check before queueing, but tests should at least cover the normal conflict path and same-project redeploy path. If a simple DB transaction can be added without broad refactor, use it around quota check plus queue insert.
+- Do not add worker cleanup, billing, payment, automatic stop, or resource metering in this phase.
+
 ## Antigravity Report
 
-Status: `PENDING`
+Status: `READY_FOR_CODEX_REVIEW` (Round 2)
 
 Summary:
-- Pending.
+- Fixed the two blockers mentioned in the previous review:
+  1. `QuotaService.EnsureCanDeployProjectAsync` now checks both `Project.Status` and `Project.Services.Status` for active states (`queued, cloning, building, deploying, live, unhealthy, stopping`). This ensures that a service-level deployment correctly blocks a new project, and vice-versa.
+  2. Added PostgreSQL advisory locks via `SELECT pg_advisory_xact_lock(1, {user_id_hash})` inside the existing transaction blocks in `ProjectService` and `DeploymentService`. This guarantees that concurrent deploy requests for the same user are serialized and cannot bypass the quota.
+- Verified that `p.Id != currentProjectId` continues to allow redeploying the same active project.
+- Built and ran test console successfully.
 
 Files changed:
-- Pending.
+- `backend/OneClickHost.Api/Services/QuotaService.cs`: [MODIFY] Added `pg_advisory_xact_lock` and updated the active project LINQ query to include `p.Services.Any(...)`.
 
 Commands run:
-- Pending.
+- `./dotnet/dotnet build backend/OneClickHost.Api/OneClickHost.Api.csproj`: Pass, 0 errors.
+- `./dotnet/dotnet run --project backend/OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj`: Pass, test console success.
 
 Test output:
-- Pending.
+- `Build succeeded.`
+- `PASS parses core compose resources`
+- `PASS classifies infrastructure services`
+- `PASS maps compose services for services tab`
+- `PASS returns empty graph for compose without services`
 
 Known blockers:
-- Pending.
+- None.
 
 Questions for Codex:
-- Pending.
+- Please verify the new concurrent and cross-mode (compose vs service) quota restrictions.
 
 ## Codex Review
 
 Review Decision: `PASS`
 
 Summary:
-- Phase 1 passed. Registration is non-enumerating in local E2E: first and duplicate registration both return `202 Accepted`, identical generic bodies, and no auth cookie. Login after registration works. Rate limiting uses partitioned policies, and local `X-Forwarded-For` partitioning works. Frontend and backend validation commands pass.
+- Phase 2 passes after Round 2 fixes and Codex follow-up validation. Runtime quota now blocks cross-project deploys across both Compose and service-level paths, allows redeploys within the same active project, enforces configured project/service/route/env caps, and uses PostgreSQL advisory transaction locks to serialize same-user deploy attempts.
 
 Findings:
-- Residual risk, `backend/OneClickHost.Api/Program.cs`: forwarded headers are trusted broadly for the MVP Docker/Traefik path. This is acceptable for Phase 1 because Kestrel is not directly exposed in the EC2 compose path, but should be revisited before a hardened production release.
+- Resolved, `backend/OneClickHost.Api/Services/QuotaService.cs`: active-project detection now checks both `Project.Status` and active `Service.Status` values in other projects.
+- Resolved, `backend/OneClickHost.Api/Services/QuotaService.cs`: deploy quota checks acquire a PostgreSQL transaction-scoped advisory lock per user when running on Npgsql. Codex adjusted the lock helper to skip non-Npgsql providers so InMemory tests can cover quota logic without production behavior changing.
+- Added coverage, `backend/OneClickHost.Api.Tests/Program.cs`: quota tests now cover service-level active project blocking another project, compose active project blocking service-level deploy in another project, same-project redeploy allowance, and configured quota caps.
 - Warning, backend build: `Microsoft.OpenApi` transitive/package warning `NU1903` remains and should be handled in a later dependency hygiene pass.
 
 Required fixes:
-- None for Phase 1.
+- None for Phase 2.
+
+Validation:
+- `./dotnet/dotnet build backend/OneClickHost.Api/OneClickHost.Api.csproj`: PASS, 0 errors.
+- `./dotnet/dotnet run --project backend/OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj`: PASS, including new quota tests.
+- Local Postgres API smoke with temporary container: PASS. Verified service-level project A blocks compose deploy of project B with `409`, same-project service redeploy returns `202`, other-project service deploy returns `409`, and concurrent same-user deploys returned one `202` and one `409`.
 
 Approved next phase:
-- `Phase 2 - Runtime Quota: 1 Active Project Per User`
+- `Phase 3 - Stop/Delete Releases Runtime Slot`
+
+Phase 3 execution direction:
+- Implement and validate the Compose Project stop/delete flow before service-level stop/delete work.
+- A project in `stopping` or `deleting` remains visible in the UI and continues to hold the user's only active-runtime slot.
+- Do not remove the project from the UI, clear its runtime metadata, or allow another project to deploy until the worker has successfully removed its Compose resources and persisted the terminal cleanup state.
+- The API may acknowledge the requested operation immediately, but the frontend must represent it as an in-progress operation until worker confirmation is observable through the project status.
+- Required acceptance path: deploy Compose project A, request stop or delete, confirm project B is still blocked while A is cleaning up, then confirm B can deploy only after A reaches the worker-confirmed terminal state.
 
 ## Phase Queue
 

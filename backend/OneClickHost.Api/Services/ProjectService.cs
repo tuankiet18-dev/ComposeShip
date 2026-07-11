@@ -26,13 +26,15 @@ public class ProjectService
     private readonly SecretEncryptionService _secrets;
     private readonly IConfiguration _configuration;
     private readonly ProjectEventService _events;
+    private readonly QuotaService _quotaService;
 
-    public ProjectService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration, ProjectEventService events)
+    public ProjectService(AppDbContext db, SecretEncryptionService secrets, IConfiguration configuration, ProjectEventService events, QuotaService quotaService)
     {
         _db = db;
         _secrets = secrets;
         _configuration = configuration;
         _events = events;
+        _quotaService = quotaService;
     }
 
     public async Task<List<ProjectResponse>> GetUserProjectsAsync(Guid userId)
@@ -74,6 +76,8 @@ public class ProjectService
 
     public async Task<ProjectResponse> CreateProjectAsync(Guid userId, CreateProjectRequest request)
     {
+        await _quotaService.EnsureMaxProjectsAsync(userId);
+
         var project = new Project
         {
             UserId = userId,
@@ -207,6 +211,8 @@ public class ProjectService
         var routes = NormalizeRoutes(request.Routes);
         var envVars = NormalizeEnvVars(request.EnvironmentVariables ?? [], project.ComposeEnvJson);
 
+        _quotaService.EnsureComposeLimitsAsync(routes.Count, envVars.Count);
+
         project.DeploymentMode = "compose";
         project.RepoUrl = request.RepoUrl.Trim();
         project.Branch = string.IsNullOrWhiteSpace(request.Branch) ? "main" : request.Branch.Trim();
@@ -251,10 +257,16 @@ public class ProjectService
             ComposeProjectName = project.ComposeProjectName ?? ToComposeProjectName(project.Id, project.Name)
         };
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        await _quotaService.EnsureCanDeployProjectAsync(userId, project.Id);
+
         project.Status = "queued";
         project.UpdatedAt = DateTime.UtcNow;
         _db.ProjectDeployments.Add(deployment);
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
         await _events.AddAsync(
             project.Id,
             wasUnhealthy ? "redeploy.requested" : "deploy.requested",

@@ -9,10 +9,12 @@ namespace OneClickHost.Api.Services;
 public class DeploymentService
 {
     private readonly AppDbContext _db;
+    private readonly QuotaService _quotaService;
 
-    public DeploymentService(AppDbContext db)
+    public DeploymentService(AppDbContext db, QuotaService quotaService)
     {
         _db = db;
+        _quotaService = quotaService;
     }
 
     public async Task<DeploymentResponse> TriggerDeploymentAsync(Guid serviceId, Guid userId)
@@ -45,7 +47,11 @@ public class DeploymentService
         service.UpdatedAt = DateTime.UtcNow;
 
         _db.Deployments.Add(deployment);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await _quotaService.EnsureCanDeployProjectAsync(userId, service.ProjectId);
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return new DeploymentResponse(
             deployment.Id, deployment.ServiceId, deployment.Status,

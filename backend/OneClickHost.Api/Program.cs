@@ -57,6 +57,7 @@ builder.Services.AddScoped<ServiceService>();
 builder.Services.AddScoped<DeploymentService>();
 builder.Services.AddScoped<ExecutionNodeService>();
 builder.Services.AddScoped<ProjectEventService>();
+builder.Services.AddScoped<QuotaService>();
 builder.Services.AddHostedService<ExecutionNodeMonitorService>();
 builder.Services.AddHttpClient<IAiDeploymentDiagnosisService, AiDeploymentDiagnosisService>();
 

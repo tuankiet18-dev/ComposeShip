@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using OneClickHost.Api.DTOs.Projects;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Services;
 
 namespace OneClickHost.Api.Controllers;
@@ -32,9 +33,16 @@ public class ProjectsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ProjectResponse>> CreateProject([FromBody] CreateProjectRequest request)
     {
-        var userId = GetUserId();
-        var project = await _projectService.CreateProjectAsync(userId, request);
-        return CreatedAtAction(nameof(GetProject), new { id = project.Id }, project);
+        try
+        {
+            var userId = GetUserId();
+            var project = await _projectService.CreateProjectAsync(userId, request);
+            return CreatedAtAction(nameof(GetProject), new { id = project.Id }, project);
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpGet("{id:guid}")]
@@ -83,6 +91,10 @@ public class ProjectsController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -161,6 +173,10 @@ public class ProjectsController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 

@@ -16,11 +16,13 @@ public class ServiceService
     private static readonly Regex EnvKeyRegex = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
     private readonly AppDbContext _db;
     private readonly SecretEncryptionService _secrets;
+    private readonly QuotaService _quotaService;
 
-    public ServiceService(AppDbContext db, SecretEncryptionService secrets)
+    public ServiceService(AppDbContext db, SecretEncryptionService secrets, QuotaService quotaService)
     {
         _db = db;
         _secrets = secrets;
+        _quotaService = quotaService;
     }
 
     public async Task<List<ServiceResponse>> GetServicesAsync(Guid projectId, Guid userId)
@@ -72,6 +74,8 @@ public class ServiceService
     {
         var projectExists = await _db.Projects.AnyAsync(p => p.Id == projectId && p.UserId == userId);
         if (!projectExists) throw new KeyNotFoundException("Project not found.");
+
+        await _quotaService.EnsureMaxServicesAsync(projectId);
 
         var serviceType = request.ServiceType ?? "frontend";
         if (!IsValidServiceType(serviceType))
@@ -242,6 +246,8 @@ public class ServiceService
             if (!EnvKeyRegex.IsMatch(ev.Key))
                 throw new ArgumentException($"Invalid environment variable key: {ev.Key}");
         }
+
+        await _quotaService.EnsureServiceEnvVarsLimitsAsync(service.ProjectId, serviceId, normalizedEnvVars.Count);
 
         var existingById = service.EnvironmentVariables.ToDictionary(ev => ev.Id);
         var existingByKey = service.EnvironmentVariables.ToDictionary(ev => ev.Key, StringComparer.Ordinal);
