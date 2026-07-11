@@ -32,8 +32,9 @@ from db import (
     supersede_previous_project_deployments,
     get_env_vars,
     fetch_live_backend_url,
+    complete_project_failure_cleanup,
+    complete_project_stop,
     mark_live_deployments_stopped,
-    mark_live_project_deployments_stopped,
 )
 from modules.repo_cloner import clone_repo, cleanup_workspace
 from modules.stack_detector import detect_stack
@@ -177,6 +178,13 @@ def process_project_deployment(conn, deployment: dict):
         all_logs.append(f"\n❌ ERROR: {error_msg}")
         all_logs.append(collect_compose_runtime_diagnostics(compose_project_name))
         all_logs.append(traceback.format_exc())
+        project_status = "failed"
+        try:
+            cleanup_compose_stack(compose_project_name, remove_volumes=False)
+            all_logs.append("✓ Failed Compose runtime resources were cleaned up; named volumes were preserved.")
+        except Exception as cleanup_error:
+            project_status = "cleanup_failed"
+            all_logs.append(f"❌ CLEANUP ERROR: {cleanup_error}")
         update_project_deployment_status(
             conn,
             deployment_id,
@@ -184,7 +192,10 @@ def process_project_deployment(conn, deployment: dict):
             error_message=_redact_text(error_msg, secret_values),
             build_logs=_redact_text("\n".join(all_logs), secret_values),
         )
-        update_project_status(conn, project_id, "failed")
+        if project_status == "failed":
+            complete_project_failure_cleanup(conn, project_id)
+        else:
+            update_project_status(conn, project_id, project_status)
         logger.error(f"❌ Compose deployment {deployment_id} failed: {error_msg}")
 
     finally:
@@ -272,11 +283,18 @@ def process_project_deployment_lease(client: ExecutionNodeClient, deployment: di
         all_logs.append(f"\nERROR: {error_msg}")
         all_logs.append(collect_compose_runtime_diagnostics(compose_project_name))
         all_logs.append(traceback.format_exc())
+        event_status = "failed"
+        try:
+            cleanup_compose_stack(compose_project_name, remove_volumes=False)
+            all_logs.append("Failed Compose runtime resources were cleaned up; named volumes were preserved.")
+        except Exception as cleanup_error:
+            event_status = "cleanup_failed"
+            all_logs.append(f"CLEANUP ERROR: {cleanup_error}")
         client.event(
             deployment_id,
             {
                 "kind": "compose",
-                "status": "failed",
+                "status": event_status,
                 "errorMessage": _redact_text(error_msg, secret_values),
                 "failureCategory": _failure_category(e),
                 "buildLogs": _truncate_logs(_redact_text("\n".join(all_logs), secret_values)),
@@ -568,17 +586,16 @@ def process_stopping_projects(conn):
         project_id = str(project["Id"])
         compose_project_name = project["ComposeProjectName"]
         if not compose_project_name:
-            update_project_status(conn, project_id, "stopped", compose_live_urls_json="[]")
+            complete_project_stop(conn, project_id)
             continue
 
         logger.info(f"Stopping Compose project: {project['ProjectName']} ({compose_project_name})")
         try:
             cleanup_compose_stack(compose_project_name, remove_volumes=False)
-            update_project_status(conn, project_id, "stopped", compose_live_urls_json="[]")
-            mark_live_project_deployments_stopped(conn, project_id)
+            complete_project_stop(conn, project_id)
             logger.info(f"Compose project {project_id} stopped")
         except Exception as e:
-            update_project_status(conn, project_id, "failed")
+            update_project_status(conn, project_id, "cleanup_failed")
             logger.error(f"Failed to stop Compose project {project_id}: {e}")
             logger.debug(traceback.format_exc())
 

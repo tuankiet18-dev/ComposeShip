@@ -46,13 +46,25 @@ export function ProjectDetailPage() {
         setProject(projectResponse);
         setEvents(projectEvents);
       })
-      .catch(console.error)
+      .catch((error) => {
+        if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
+          navigate("/projects", { replace: true });
+          return;
+        }
+        console.error(error);
+      })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [navigate, projectId]);
 
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  useEffect(() => {
+    if (!project || !["stopping", "deleting"].includes(project.status.toLowerCase())) return;
+    const interval = window.setInterval(loadProject, 1500);
+    return () => window.clearInterval(interval);
+  }, [loadProject, project]);
 
   const createService = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -149,6 +161,8 @@ export function ProjectDetailPage() {
     ...(project.composeConfig?.liveUrls ?? []),
     ...project.services.map((service) => service.liveUrl).filter((url): url is string => Boolean(url)),
   ];
+  const cleanupInProgress = ["stopping", "deleting"].includes(project.status.toLowerCase());
+  const cleanupFailed = ["cleanup_failed", "deleting_failed"].includes(project.status.toLowerCase());
 
   return (
     <div className="space-y-6">
@@ -163,13 +177,13 @@ export function ProjectDetailPage() {
         actions={
           <>
             <StatusBadge status={project.status} />
-            <Button variant="destructive" onClick={deleteProject} disabled={pendingAction === "delete-project"}>
+            <Button variant="destructive" onClick={deleteProject} disabled={cleanupInProgress || pendingAction === "delete-project"}>
               {pendingAction === "delete-project" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Delete
             </Button>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button disabled={cleanupInProgress || cleanupFailed}>
                   <Plus className="h-4 w-4" /> Add service
                 </Button>
               </DialogTrigger>
@@ -253,6 +267,20 @@ export function ProjectDetailPage() {
         pendingAction={pendingAction}
         onRunProjectAction={runProjectAction}
       />
+
+      {(cleanupInProgress || cleanupFailed) && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-950">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">{cleanupFailed ? "Runtime cleanup needs attention" : "Runtime cleanup in progress"}</p>
+            <p className="mt-1 text-sm">
+              {cleanupFailed
+                ? "The runtime slot remains reserved. Retry Stop or Delete after checking worker logs."
+                : "This project remains visible and continues to reserve the runtime slot until the worker confirms cleanup."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {project.status === "unhealthy" && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-950">
@@ -404,6 +432,10 @@ function ProjectCommandBar({
   onRunProjectAction: (action: "deploy" | "stop") => void;
 }) {
   const primaryUrl = publicUrls[0] ?? null;
+  const status = project.status.toLowerCase();
+  const cleanupInProgress = ["stopping", "deleting"].includes(status);
+  const cleanupFailed = ["cleanup_failed", "deleting_failed"].includes(status);
+  const stopped = status === "stopped";
 
   return (
     <Card>
@@ -426,11 +458,11 @@ function ProjectCommandBar({
               <Activity className="h-4 w-4" /> Logs
             </Link>
           </Button>
-          <Button variant="outline" onClick={() => onRunProjectAction("stop")} disabled={!hasComposeConfig || pendingAction === "stop-stack"}>
+          <Button variant="outline" onClick={() => onRunProjectAction("stop")} disabled={!hasComposeConfig || cleanupInProgress || stopped || status === "deleting_failed" || pendingAction === "stop-stack"}>
             {pendingAction === "stop-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-            Stop
+            {cleanupFailed ? "Retry cleanup" : "Stop"}
           </Button>
-          <Button onClick={() => onRunProjectAction("deploy")} disabled={!hasComposeConfig || pendingAction === "deploy-stack"}>
+          <Button onClick={() => onRunProjectAction("deploy")} disabled={!hasComposeConfig || cleanupInProgress || cleanupFailed || pendingAction === "deploy-stack"}>
             {pendingAction === "deploy-stack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {latestDeployment ? "Redeploy stack" : "Deploy stack"}
           </Button>

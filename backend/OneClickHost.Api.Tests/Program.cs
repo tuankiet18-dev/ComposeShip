@@ -15,6 +15,8 @@ var tests = new (string Name, Func<Task> Test)[]
     ("blocks service-level active project from deploying another project", BlocksServiceLevelActiveProject),
     ("blocks compose active project from service-level deploy in another project", BlocksComposeActiveProject),
     ("allows redeploy within the same active project", AllowsSameProjectRedeploy),
+    ("cleanup states keep the runtime slot reserved", CleanupStatesKeepRuntimeSlot),
+    ("terminal cleanup states release the runtime slot", TerminalCleanupStatesReleaseRuntimeSlot),
     ("enforces configured project service and env quotas", EnforcesConfiguredQuotaCaps),
 };
 
@@ -231,6 +233,36 @@ static async Task AllowsSameProjectRedeploy()
 
     var quota = CreateQuotaService(db);
     await quota.EnsureCanDeployProjectAsync(userId, activeProject.Id);
+}
+
+static async Task CleanupStatesKeepRuntimeSlot()
+{
+    foreach (var status in new[] { "stopping", "deleting", "deleting_failed", "cleanup_failed" })
+    {
+        var userId = Guid.NewGuid();
+        await using var db = CreateDbContext();
+        SeedProject(db, userId, $"cleanup-{status}", projectStatus: status);
+        var target = SeedProject(db, userId, "target", projectStatus: "active");
+        await db.SaveChangesAsync();
+
+        var quota = CreateQuotaService(db);
+        await AssertThrowsAsync<QuotaExceededException>(() => quota.EnsureCanDeployProjectAsync(userId, target.Id));
+    }
+}
+
+static async Task TerminalCleanupStatesReleaseRuntimeSlot()
+{
+    foreach (var status in new[] { "stopped", "failed" })
+    {
+        var userId = Guid.NewGuid();
+        await using var db = CreateDbContext();
+        SeedProject(db, userId, $"terminal-{status}", projectStatus: status);
+        var target = SeedProject(db, userId, "target", projectStatus: "active");
+        await db.SaveChangesAsync();
+
+        var quota = CreateQuotaService(db);
+        await quota.EnsureCanDeployProjectAsync(userId, target.Id);
+    }
 }
 
 static async Task EnforcesConfiguredQuotaCaps()

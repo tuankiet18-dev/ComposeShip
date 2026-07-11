@@ -67,7 +67,7 @@ public class ProjectsController : ControllerBase
         {
             var userId = GetUserId();
             await _projectService.DeleteProjectAsync(id, userId);
-            return NoContent();
+            return Accepted(new { status = "deleting" });
         }
         catch (KeyNotFoundException)
         {
@@ -119,6 +119,10 @@ public class ProjectsController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -223,7 +227,7 @@ public class ProjectsController : ControllerBase
         {
             var userId = GetUserId();
             await _projectService.StopProjectAsync(id, userId);
-            return NoContent();
+            return Accepted(new { status = "stopping" });
         }
         catch (KeyNotFoundException)
         {
@@ -232,6 +236,10 @@ public class ProjectsController : ControllerBase
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (QuotaExceededException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
     }
 

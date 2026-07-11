@@ -15,14 +15,14 @@ Use it to pass phase instructions, implementation reports, review feedback, and 
 
 ## Current Phase
 
-Phase: `2.5 - Compose Deploy Safety & Clarity`
+Phase: `3 - Compose Stop/Delete Runtime Cleanup`
 
-Status: `PASS`
+Status: `READY_FOR_USER_VALIDATION`
 
 Owner: `Codex`
 
 Goal:
-Make production Compose deployment understandable and safe before a worker creates containers.
+Keep projects visible and runtime slots reserved until worker-confirmed Compose cleanup succeeds.
 
 ## Phase Instructions For Antigravity
 
@@ -168,6 +168,28 @@ Validation:
 Residual risks:
 - Worker `pytest` is not installed in the current container image, so the new Python tests were smoke-tested through the worker runtime rather than collected by pytest.
 - Existing failed deployments need a later cleanup action; Phase 3 owns the stop/delete lifecycle and UI removal contract.
+
+## Phase 3 Implementation And Review
+
+Review Decision: `PASS_AUTOMATED_PENDING_USER_VALIDATION`
+
+Summary:
+- Stop and delete now return `202 Accepted`; API records intent only and no longer removes runtime routes directly.
+- Projects remain visible in `stopping` and `deleting`; those states plus cleanup failures continue to reserve the user's runtime slot.
+- Worker cleanup verifies containers, tunnels, routes, networks, volumes, and project-owned image tags before releasing the slot or deleting the project row.
+- Stop preserves named volumes. Delete removes named volumes and project-owned Compose image tags, including the Stop-then-Delete case.
+- Failed Compose deployments clean partial runtime resources before becoming inactive; incomplete cleanup uses `cleanup_failed`.
+- Dashboard polls transitional projects, shows cleanup states, disables conflicting actions, and offers cleanup retry after failure.
+
+Validation:
+- Backend build and test console: PASS, including cleanup-state quota coverage.
+- Frontend lint and production build: PASS.
+- Worker pytest: PASS, 12 tests.
+- Full local Compose E2E: PASS. Verified A remains visible and blocks B while worker is stopped; A releases the slot only after `stopped`; Stop preserves its volume; Delete remains visible and blocks B; worker deletion removes row, volume, containers, routes, networks, and image tags.
+
+User validation gate:
+- Run the Phase 1-3 manual checklist supplied by Codex.
+- Do not start Phase 4 until the user reports the checklist result and Codex records the final decision.
 
 ## Phase Queue
 

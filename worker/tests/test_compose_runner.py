@@ -9,6 +9,7 @@ sys.path.insert(0, worker_dir)
 
 from modules.compose_runner import (
     _wait_for_quick_tunnel_url,
+    cleanup_compose_stack,
     prepare_compose_file,
     write_traefik_routes,
 )
@@ -98,6 +99,30 @@ def test_prepare_compose_keeps_named_data_volume(tmp_path):
     with open(sanitized_file, encoding="utf-8") as f:
         sanitized = yaml.safe_load(f)
     assert sanitized["services"]["postgres"]["volumes"] == ["postgres_data:/var/lib/postgresql/data"]
+
+
+def test_cleanup_stop_preserves_named_volumes(monkeypatch):
+    client = _FakeCleanupClient()
+    monkeypatch.setattr("modules.compose_runner._client", lambda: client)
+    monkeypatch.setattr("modules.compose_runner.remove_traefik_routes", lambda _: None)
+    monkeypatch.setattr("modules.compose_runner.remove_cloudflare_quick_tunnels", lambda _: None)
+
+    cleanup_compose_stack("oc-project", remove_volumes=False)
+
+    assert client.container.removed
+    assert client.network.removed
+    assert not client.volume.removed
+
+
+def test_cleanup_delete_removes_named_volumes(monkeypatch):
+    client = _FakeCleanupClient()
+    monkeypatch.setattr("modules.compose_runner._client", lambda: client)
+    monkeypatch.setattr("modules.compose_runner.remove_traefik_routes", lambda _: None)
+    monkeypatch.setattr("modules.compose_runner.remove_cloudflare_quick_tunnels", lambda _: None)
+
+    cleanup_compose_stack("oc-project", remove_volumes=True)
+
+    assert client.volume.removed
 
 
 def test_prepare_compose_blocks_external_volumes(tmp_path):
@@ -268,6 +293,72 @@ class _FakeTunnelContainer:
 
     def logs(self, stdout=True, stderr=True, tail=120):
         return b"Your quick Tunnel has been created! https://unit-test.trycloudflare.com"
+
+
+class _FakeImage:
+    id = "image-1"
+    tags = ["oc-project-api:latest"]
+    attrs = {"Config": {"Labels": {}}}
+
+
+class _FakeContainer:
+    name = "oc-project-api-1"
+    status = "running"
+    image = _FakeImage()
+    removed = False
+
+    def stop(self, timeout=10):
+        self.status = "exited"
+
+    def remove(self, force=True, v=False):
+        self.removed = True
+
+
+class _FakeVolume:
+    name = "oc-project_data"
+    removed = False
+
+    def remove(self, force=True):
+        self.removed = True
+
+
+class _FakeNetwork:
+    name = "oc-project_default"
+    removed = False
+
+    def remove(self):
+        self.removed = True
+
+
+class _FakeCollection:
+    def __init__(self, item):
+        self.item = item
+
+    def list(self, **kwargs):
+        return [] if self.item.removed else [self.item]
+
+
+class _FakeImages:
+    def __init__(self):
+        self.image = _FakeImage()
+        self.removed = False
+
+    def list(self):
+        return [] if self.removed else [self.image]
+
+    def remove(self, **kwargs):
+        self.removed = True
+
+
+class _FakeCleanupClient:
+    def __init__(self):
+        self.container = _FakeContainer()
+        self.volume = _FakeVolume()
+        self.network = _FakeNetwork()
+        self.containers = _FakeCollection(self.container)
+        self.volumes = _FakeCollection(self.volume)
+        self.networks = _FakeCollection(self.network)
+        self.images = _FakeImages()
 
 
 def test_wait_for_quick_tunnel_url_parses_trycloudflare_url():

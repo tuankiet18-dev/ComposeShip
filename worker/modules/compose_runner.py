@@ -586,7 +586,7 @@ def _remove_quick_tunnel_container(container_name: str):
     except NotFound:
         return
     except APIError as e:
-        logger.warning("Could not remove Cloudflare Quick Tunnel container %s: %s", container_name, e)
+        raise RuntimeError(f"Could not remove Cloudflare Quick Tunnel container {container_name}: {e}") from e
 
 
 def _wait_for_quick_tunnel_url(container, container_name: str, timeout: int = 45) -> str:
@@ -702,7 +702,7 @@ def remove_traefik_routes(compose_project_name: str):
             try:
                 os.remove(os.path.join(DYNAMIC_DIR, name))
             except OSError as e:
-                logger.warning("Could not remove Traefik route %s: %s", name, e)
+                raise RuntimeError(f"Could not remove Traefik route {name}: {e}") from e
 
 
 def remove_cloudflare_quick_tunnels(compose_project_name: str):
@@ -846,8 +846,16 @@ def deploy_compose_stack(
 
 def cleanup_compose_stack(compose_project_name: str, remove_volumes: bool):
     client = _client()
-    remove_traefik_routes(compose_project_name)
-    remove_cloudflare_quick_tunnels(compose_project_name)
+    errors: list[str] = []
+    try:
+        remove_traefik_routes(compose_project_name)
+    except RuntimeError as error:
+        errors.append(str(error))
+    try:
+        remove_cloudflare_quick_tunnels(compose_project_name)
+    except RuntimeError as error:
+        errors.append(str(error))
+
     containers = client.containers.list(
         all=True,
         filters={"label": f"com.docker.compose.project={compose_project_name}"},
@@ -860,28 +868,81 @@ def cleanup_compose_stack(compose_project_name: str, remove_volumes: bool):
                 container.stop(timeout=10)
             container.remove(force=True, v=remove_volumes)
         except APIError as e:
-            logger.warning("Could not remove compose container %s: %s", container.name, e)
+            errors.append(f"Could not remove compose container {container.name}: {e}")
 
     if remove_volumes:
         for volume in client.volumes.list(filters={"label": f"com.docker.compose.project={compose_project_name}"}):
             try:
                 volume.remove(force=True)
             except APIError as e:
-                logger.warning("Could not remove compose volume %s: %s", volume.name, e)
+                errors.append(f"Could not remove compose volume {volume.name}: {e}")
 
-        for image in images:
+        try:
+            for image in client.images.list():
+                if any(tag.split(":", 1)[0].startswith(f"{compose_project_name}-") for tag in (image.tags or [])):
+                    images.append(image)
+        except APIError as e:
+            errors.append(f"Could not enumerate Compose images: {e}")
+
+        for image in {image.id: image for image in images}.values():
             tags = image.tags or []
             if any(tag.startswith(("postgres:", "redis:", "timescale/")) for tag in tags):
                 continue
-            labels = (image.attrs.get("Config") or {}).get("Labels") or {}
-            if labels.get(ONECLICK_LABEL) == "true" or labels.get("com.docker.compose.project") == compose_project_name:
+            project_tags = [tag for tag in tags if tag.split(":", 1)[0].startswith(f"{compose_project_name}-")]
+            for tag in project_tags:
                 try:
-                    client.images.remove(image=image.id, force=True, noprune=False)
-                except (APIError, NotFound) as e:
-                    logger.debug("Could not remove compose image %s: %s", image.id, e)
+                    client.images.remove(image=tag, force=False, noprune=False)
+                except NotFound:
+                    continue
+                except APIError as e:
+                    errors.append(f"Could not remove compose image tag {tag}: {e}")
 
     for network in client.networks.list(filters={"label": f"com.docker.compose.project={compose_project_name}"}):
         try:
             network.remove()
         except APIError as e:
-            logger.debug("Could not remove compose network %s: %s", network.name, e)
+            errors.append(f"Could not remove compose network {network.name}: {e}")
+
+    remaining_containers = client.containers.list(
+        all=True,
+        filters={"label": f"com.docker.compose.project={compose_project_name}"},
+    )
+    if remaining_containers:
+        errors.append("Compose containers remain after cleanup: " + ", ".join(container.name for container in remaining_containers))
+
+    remaining_tunnels = client.containers.list(
+        all=True,
+        filters={
+            "label": [
+                f"{ONECLICK_COMPOSE_PROJECT_LABEL}={compose_project_name}",
+                f"{ONECLICK_QUICK_TUNNEL_LABEL}=true",
+            ]
+        },
+    )
+    if remaining_tunnels:
+        errors.append("Cloudflare tunnel containers remain after cleanup: " + ", ".join(container.name for container in remaining_tunnels))
+
+    remaining_networks = client.networks.list(filters={"label": f"com.docker.compose.project={compose_project_name}"})
+    if remaining_networks:
+        errors.append("Compose networks remain after cleanup: " + ", ".join(network.name for network in remaining_networks))
+
+    if remove_volumes:
+        remaining_volumes = client.volumes.list(filters={"label": f"com.docker.compose.project={compose_project_name}"})
+        if remaining_volumes:
+            errors.append("Compose volumes remain after cleanup: " + ", ".join(volume.name for volume in remaining_volumes))
+        remaining_images = [
+            image
+            for image in client.images.list()
+            if any(tag.split(":", 1)[0].startswith(f"{compose_project_name}-") for tag in (image.tags or []))
+        ]
+        if remaining_images:
+            errors.append("Compose application images remain after cleanup: " + ", ".join(image.id for image in remaining_images))
+
+    if os.path.exists(DYNAMIC_DIR):
+        route_prefix = f"compose-{compose_project_name}-"
+        remaining_routes = [name for name in os.listdir(DYNAMIC_DIR) if name.startswith(route_prefix) and name.endswith(".yml")]
+        if remaining_routes:
+            errors.append("Traefik routes remain after cleanup: " + ", ".join(remaining_routes))
+
+    if errors:
+        raise RuntimeError("Compose cleanup incomplete: " + " | ".join(errors))

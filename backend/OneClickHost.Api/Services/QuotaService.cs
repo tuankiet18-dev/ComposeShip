@@ -21,7 +21,11 @@ public class QuotaService
 
         // Enforce one active project per user.
         // A project is active if its status or any of its services' statuses is in the following list.
-        var activeStatuses = new[] { "queued", "cloning", "building", "deploying", "live", "unhealthy", "stopping" };
+        var activeStatuses = new[]
+        {
+            "queued", "cloning", "building", "deploying", "live", "unhealthy",
+            "stopping", "deleting", "deleting_failed", "cleanup_failed"
+        };
 
         var activeProject = await _db.Projects
             .Where(p => p.UserId == userId && p.Id != currentProjectId)
@@ -48,7 +52,7 @@ public class QuotaService
     public async Task EnsureMaxProjectsAsync(Guid userId)
     {
         var maxProjects = _configuration.GetValue("Quotas:MaxProjectsPerUser", 3);
-        var projectCount = await _db.Projects.CountAsync(p => p.UserId == userId && p.Status != "deleting");
+        var projectCount = await _db.Projects.CountAsync(p => p.UserId == userId);
 
         if (projectCount >= maxProjects)
         {
@@ -59,7 +63,7 @@ public class QuotaService
     public async Task EnsureMaxServicesAsync(Guid projectId)
     {
         var maxServices = _configuration.GetValue("Quotas:MaxServicesPerProject", 5);
-        var serviceCount = await _db.Services.CountAsync(s => s.ProjectId == projectId && s.Status != "deleting");
+        var serviceCount = await _db.Services.CountAsync(s => s.ProjectId == projectId);
 
         if (serviceCount >= maxServices)
         {

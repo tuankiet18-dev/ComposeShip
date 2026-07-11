@@ -1,5 +1,5 @@
 import { FolderGit2, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/app/EmptyState";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -22,13 +22,24 @@ export function ProjectsPage() {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadProjects = useCallback(() => {
     api
       .getProjects()
       .then(setProjects)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    const hasPendingCleanup = projects.some((project) => ["stopping", "deleting"].includes(project.status?.toLowerCase()));
+    if (!hasPendingCleanup) return;
+    const interval = window.setInterval(loadProjects, 1500);
+    return () => window.clearInterval(interval);
+  }, [loadProjects, projects]);
 
   useEffect(() => {
     setQuery(searchParams.get("search") || "");
@@ -91,6 +102,9 @@ export function ProjectsPage() {
             <SelectItem value="failed">Failed</SelectItem>
             <SelectItem value="unhealthy">Unhealthy</SelectItem>
             <SelectItem value="stopped">Stopped</SelectItem>
+            <SelectItem value="stopping">Stopping</SelectItem>
+            <SelectItem value="deleting">Deleting</SelectItem>
+            <SelectItem value="cleanup_failed">Cleanup failed</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -46,10 +46,25 @@ const statusMap: Record<string, { label: string; className: string; dot: string 
     className: "bg-muted text-muted-foreground ring-border",
     dot: "bg-muted-foreground",
   },
+  stopping: {
+    label: "Stopping",
+    className: "bg-[color-mix(in_oklab,var(--warning)_12%,transparent)] text-[color-mix(in_oklab,var(--warning)_70%,var(--foreground))] ring-[color-mix(in_oklab,var(--warning)_24%,transparent)]",
+    dot: "bg-[var(--warning)] animate-pulse",
+  },
   deleting: {
     label: "Deleting",
     className: "bg-[color-mix(in_oklab,var(--destructive)_10%,transparent)] text-[var(--destructive)] ring-[color-mix(in_oklab,var(--destructive)_22%,transparent)]",
     dot: "bg-[var(--destructive)] animate-pulse",
+  },
+  deleting_failed: {
+    label: "Delete failed",
+    className: "bg-[color-mix(in_oklab,var(--destructive)_12%,transparent)] text-[var(--destructive)] ring-[color-mix(in_oklab,var(--destructive)_22%,transparent)]",
+    dot: "bg-[var(--destructive)]",
+  },
+  cleanup_failed: {
+    label: "Cleanup failed",
+    className: "bg-[color-mix(in_oklab,var(--destructive)_12%,transparent)] text-[var(--destructive)] ring-[color-mix(in_oklab,var(--destructive)_22%,transparent)]",
+    dot: "bg-[var(--destructive)]",
   },
   superseded: {
     label: "Superseded",

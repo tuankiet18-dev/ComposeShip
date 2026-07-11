@@ -185,6 +185,66 @@ def mark_live_project_deployments_stopped(conn, project_id: str):
     conn.commit()
 
 
+def complete_project_stop(conn, project_id: str):
+    """Atomically release a Compose runtime slot after worker cleanup succeeds."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            UPDATE "Projects"
+            SET "Status" = 'stopped', "ComposeLiveUrlsJson" = '[]', "UpdatedAt" = NOW()
+            WHERE "Id" = %s
+            ''',
+            (project_id,),
+        )
+        cur.execute(
+            '''
+            UPDATE "ProjectDeployments"
+            SET "Status" = 'stopped', "CompletedAt" = NOW()
+            WHERE "ProjectId" = %s AND "Status" = 'live'
+            ''',
+            (project_id,),
+        )
+        cur.execute(
+            '''
+            UPDATE "RouteTargets"
+            SET "Status" = 'removed', "UpdatedAt" = NOW()
+            WHERE "ProjectId" = %s AND "Status" = 'active'
+            ''',
+            (project_id,),
+        )
+    conn.commit()
+
+
+def complete_project_failure_cleanup(conn, project_id: str):
+    """Mark a failed Compose project inactive only after its runtime is gone."""
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            UPDATE "Projects"
+            SET "Status" = 'failed', "ComposeLiveUrlsJson" = '[]', "UpdatedAt" = NOW()
+            WHERE "Id" = %s
+            ''',
+            (project_id,),
+        )
+        cur.execute(
+            '''
+            UPDATE "ProjectDeployments"
+            SET "Status" = 'stopped', "CompletedAt" = NOW()
+            WHERE "ProjectId" = %s AND "Status" = 'live'
+            ''',
+            (project_id,),
+        )
+        cur.execute(
+            '''
+            UPDATE "RouteTargets"
+            SET "Status" = 'removed', "UpdatedAt" = NOW()
+            WHERE "ProjectId" = %s AND "Status" = 'active'
+            ''',
+            (project_id,),
+        )
+    conn.commit()
+
+
 def save_deployment_diagnostic_snapshot(conn, deployment_id: str, snapshot: dict):
     """Insert or replace the diagnostic snapshot for a failed deployment."""
     with conn.cursor() as cur:

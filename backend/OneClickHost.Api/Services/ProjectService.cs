@@ -14,7 +14,6 @@ public class ProjectService
     private const string SecretMask = "********";
     private const string TraefikExposure = "traefik";
     private const string CloudflareQuickExposure = "cloudflare_quick";
-    private static readonly Regex SafeFileName = new("[^a-zA-Z0-9.-]+", RegexOptions.Compiled);
     private static readonly HashSet<string> ComposeExposureProviders = [TraefikExposure, CloudflareQuickExposure];
     private static readonly string[] ComposeFileCandidates = [
         "docker-compose.prod.yml",
@@ -50,7 +49,7 @@ public class ProjectService
     public async Task<List<ProjectResponse>> GetUserProjectsAsync(Guid userId)
     {
         return await _db.Projects
-            .Where(p => p.UserId == userId && p.Status != "deleting")
+            .Where(p => p.UserId == userId)
             .OrderByDescending(p => p.UpdatedAt)
             .Select(p => new ProjectResponse(
                 p.Id, p.Name, p.Description,
@@ -233,6 +232,8 @@ public class ProjectService
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
+        EnsureRuntimeCleanupNotInProgress(project);
+
         var branch = string.IsNullOrWhiteSpace(request.Branch) ? "main" : request.Branch.Trim();
         var subfolder = NormalizeRelativePath(request.Subfolder);
         var composeFile = NormalizeRelativePath(request.ComposeFile);
@@ -281,6 +282,8 @@ public class ProjectService
             throw new ArgumentException("Compose repository URL is required.");
         if (ReadRoutes(project.ComposeRoutesJson).Count == 0)
             throw new ArgumentException("At least one public Compose route is required.");
+
+        EnsureRuntimeCleanupNotInProgress(project);
 
         var deploymentInspection = await LoadProjectComposeInspectionAsync(project);
         EnsureDeployable(deploymentInspection.Selected);
@@ -375,10 +378,18 @@ public class ProjectService
             throw new ArgumentException("Project is not configured for Compose deployment.");
         if (project.Status == "stopped")
             return;
+        if (project.Status is "deleting" or "deleting_failed")
+            throw new QuotaExceededException("Project deletion is in progress. Retry deletion or wait for worker cleanup to finish.");
 
         project.Status = "stopping";
         project.UpdatedAt = DateTime.UtcNow;
-        MarkActiveRoutesRemoved(project);
+        _db.ProjectEvents.Add(new ProjectEvent
+        {
+            ProjectId = project.Id,
+            Type = "stop.requested",
+            Severity = "info",
+            Message = "Compose stack stop was requested. Runtime cleanup is pending worker confirmation."
+        });
         await _db.SaveChangesAsync();
     }
 
@@ -390,6 +401,9 @@ public class ProjectService
             .FirstOrDefaultAsync(p => p.Id == projectId && p.UserId == userId)
             ?? throw new KeyNotFoundException("Project not found.");
 
+        if (project.Status == "deleting")
+            return;
+
         // Deletion is asynchronous. The Worker must stop containers and remove
         // Traefik route files before the project row can be safely removed.
         project.Status = "deleting";
@@ -400,36 +414,20 @@ public class ProjectService
             service.Status = "deleting";
             service.UpdatedAt = DateTime.UtcNow;
         }
-        MarkActiveRoutesRemoved(project);
-
+        _db.ProjectEvents.Add(new ProjectEvent
+        {
+            ProjectId = project.Id,
+            Type = "delete.requested",
+            Severity = "warning",
+            Message = "Project deletion was requested. The project remains visible until worker cleanup completes."
+        });
         await _db.SaveChangesAsync();
     }
 
-    private void MarkActiveRoutesRemoved(Project project)
+    private static void EnsureRuntimeCleanupNotInProgress(Project project)
     {
-        var now = DateTime.UtcNow;
-        foreach (var target in project.RouteTargets.Where(r => r.Status == "active"))
-        {
-            target.Status = "removed";
-            target.UpdatedAt = now;
-            RemoveTraefikRoute(target);
-            _db.ProjectEvents.Add(new ProjectEvent
-            {
-                ProjectId = project.Id,
-                DeploymentId = target.ProjectDeploymentId,
-                ExecutionNodeId = target.ExecutionNodeId,
-                RouteTargetId = target.Id,
-                Type = "route.removed",
-                Severity = "info",
-                Message = $"Route {target.Host} was removed from active routing.",
-                MetadataJson = JsonSerializer.Serialize(new Dictionary<string, string>
-                {
-                    ["host"] = target.Host,
-                    ["targetUrl"] = target.TargetUrl
-                }, JsonOptions),
-                CreatedAt = now
-            });
-        }
+        if (project.Status is "stopping" or "deleting" or "deleting_failed" or "cleanup_failed")
+            throw new QuotaExceededException("Runtime cleanup must complete before this project can be changed or deployed.");
     }
 
     private static List<ComposeRouteResponse> NormalizeRoutes(List<ComposeRouteRequest> routes)
@@ -1040,20 +1038,6 @@ public class ProjectService
 
     private static bool IsLikelyHttpPort(int port) =>
         port is 80 or 443 or 3000 or 3001 or 4173 or 5000 or 5173 or 5555 or 8000 or 8080 or 8081 or 8025;
-
-    private void RemoveTraefikRoute(RouteTarget target)
-    {
-        var dynamicDir = _configuration["Traefik:DynamicDirectory"]
-            ?? _configuration["TRAEFIK_DYNAMIC_DIR"]
-            ?? "/etc/traefik/dynamic";
-        if (!Directory.Exists(dynamicDir))
-            return;
-
-        var routerName = SafeFileName.Replace($"node-{target.Host}", "-").Trim('-');
-        var path = Path.Combine(dynamicDir, $"{routerName}.yml");
-        if (File.Exists(path))
-            File.Delete(path);
-    }
 
     private static bool IsInfrastructureService(string serviceName, string imageName)
     {
