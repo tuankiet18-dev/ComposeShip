@@ -22,6 +22,7 @@ cat >"$output_file" <<EOF
 # Keep this file private. Do not commit it.
 JWT_SECRET=$(rand_b64 48)
 ONECLICK_SECRET_KEY=$(rand_b64 32)
+INVITE_CODE_PEPPER=$(rand_b64 32)
 EXECUTION_NODE_REGISTRATION_TOKEN=$(rand_b64 32)
 EXECUTION_NODE_TOKEN=$(rand_b64 32)
 POSTGRES_PASSWORD=$(rand_b64 24)

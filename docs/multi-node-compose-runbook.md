@@ -1,5 +1,10 @@
 # Runbook Compose Deploy Multi-Node
 
+> This runbook describes the currently implemented HTTP/sslip.io infrastructure
+> path. The approved invite-only MVP will use CloudFront HTTPS for dashboard/API
+> and Cloudflare Quick Tunnel HTTPS for displayed user routes. Track that work in
+> `mvp-release-roadmap.md`; do not interpret this runbook as release approval.
+
 Runbook này mô tả phase đầu để OneClickHost chạy Compose deploy trên hai VM
 cùng VPC/private network. App route của người dùng dùng HTTP qua `sslip.io`.
 HTTPS/ACME và Cloudflare Tunnel để phase sau.
@@ -58,7 +63,7 @@ Local mode vẫn có thể kiểm tra phần lớn flow bằng hai compose proje
 máy:
 
 ```bash
-docker compose --env-file .generated/multinode/control-plane.env up -d --build
+docker compose -f docker-compose.control-plane.yml --env-file .generated/multinode/control-plane.env up -d --build
 docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env up -d --build
 ```
 
@@ -113,7 +118,7 @@ Trên AWS phase đầu tối ưu chi phí, control-plane cũng có thể đóng 
 instance nhẹ cho execution-node private-only. Cách này rẻ hơn NAT Gateway nhưng
 cần coi control-plane là thành phần hạ tầng quan trọng: bật `source_dest_check =
 false`, `net.ipv4.ip_forward=1`, và chỉ route private subnet qua control-plane.
-Stack Terraform mẫu nằm ở `infra/aws/phase1-multinode`.
+Stack Terraform mẫu nằm ở `infra/aws/mvp`.
 
 Phase đầu dùng:
 
@@ -124,8 +129,7 @@ TRAEFIK_DOMAIN=<control-plane-public-ip>.sslip.io
 Chạy:
 
 ```bash
-cp .generated/multinode/control-plane.env .env
-docker compose up -d --build
+docker compose -f docker-compose.control-plane.yml --env-file .generated/multinode/control-plane.env up -d --build
 ```
 
 ## 5. Execution-Node VM

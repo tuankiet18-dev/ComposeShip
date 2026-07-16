@@ -48,11 +48,12 @@ control_plane_api_host="${CONTROL_PLANE_API_HOST:-$control_plane_private_ip}"
 control_plane_postgres_password="${CONTROL_PLANE_POSTGRES_PASSWORD:-$POSTGRES_PASSWORD}"
 traefik_domain="${CONTROL_PLANE_PUBLIC_IP}.sslip.io"
 admin_cors_origin="${ADMIN_CORS_ORIGIN:-http://${traefik_domain}}"
+auth_cookie_secure="${AUTH_COOKIE_SECURE:-true}"
 
 mkdir -p "$output_dir"
 
 cat >"${output_dir}/control-plane.env" <<EOF
-# Generated control-plane env for OneClickHost multi-node phase one.
+# Generated control-plane env for the OneClickHost MVP.
 ASPNETCORE_ENVIRONMENT=Production
 POSTGRES_DB=oneclickhost
 POSTGRES_USER=oneclick
@@ -60,10 +61,14 @@ POSTGRES_PASSWORD=${control_plane_postgres_password}
 CONNECTION_STRING=Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${control_plane_postgres_password}
 JWT_SECRET=${JWT_SECRET}
 ONECLICK_SECRET_KEY=${ONECLICK_SECRET_KEY}
+INVITE_CODE_PEPPER=${INVITE_CODE_PEPPER}
+INVITES_REQUIRED=true
+INVITES_MAX_ACCOUNTS=10
 JWT_ISSUER=oneclick-host
 JWT_AUDIENCE=oneclick-host-client
 JWT_EXPIRY_HOURS=24
 CORS_ORIGINS=${admin_cors_origin}
+FORWARDED_HEADERS_TRUSTED_NETWORKS=172.16.0.0/12
 TRAEFIK_DOMAIN=${traefik_domain}
 VITE_API_URL=http://${traefik_domain}/api
 API_BIND=${control_plane_api_bind}
@@ -74,13 +79,16 @@ EXECUTION_NODE_LEASE_TIMEOUT_SECONDS=120
 EXECUTION_NODE_MAX_LEASE_RETRIES=3
 EXECUTION_NODE_RETRY_DELAY_SECONDS=30
 LOG_MAX_BYTES=200000
-AUTO_MIGRATE_DATABASE=true
+AUTO_MIGRATE_DATABASE=false
+AUTH_COOKIE_SECURE=${auth_cookie_secure}
 WORKER_MODE=dispatcher
+MAX_ACTIVE_PROJECTS=3
+MAX_QUEUED_DEPLOYMENTS=10
 EOF
 
 if [[ -n "${EXECUTION_NODE_PRIVATE_IP:-}" ]]; then
   cat >"${output_dir}/execution-node.env" <<EOF
-# Generated execution-node env for OneClickHost multi-node phase one.
+# Generated execution-node env for the OneClickHost MVP.
 COMPOSE_PROJECT_NAME=oneclick-execution
 WORKER_MODE=executor
 CONTROL_PLANE_API_URL=http://${control_plane_api_host}:5000/api
@@ -90,7 +98,7 @@ EXECUTION_NODE_REGISTRATION_TOKEN=${EXECUTION_NODE_REGISTRATION_TOKEN}
 EXECUTION_NODE_PRIVATE_HOST=${EXECUTION_NODE_PRIVATE_IP}
 EXECUTION_NODE_BIND_HOST=0.0.0.0
 EXECUTION_NODE_ARCHITECTURE=unknown
-EXECUTION_NODE_LABELS=private-network,phase-one
+EXECUTION_NODE_LABELS=private-network,mvp
 TRAEFIK_DOMAIN=${traefik_domain}
 WORKER_POLL_INTERVAL=5
 WORKER_BUILD_TIMEOUT=900
@@ -98,6 +106,14 @@ MAX_CONCURRENT_BUILDS=1
 CONTAINER_MEMORY_LIMIT=256m
 CONTAINER_CPU_LIMIT=0.5
 CONTAINER_PIDS_LIMIT=256
+CONTAINER_LOG_MAX_SIZE=10m
+CONTAINER_LOG_MAX_FILES=3
+DISK_MIN_FREE_BYTES=5368709120
+DISK_MIN_FREE_PERCENT=10
+DISK_CLEANUP_FREE_PERCENT=20
+CLEANUP_INTERVAL_SECONDS=900
+CLEANUP_ARTIFACT_MAX_AGE_SECONDS=86400
+CLEANUP_BUILD_CACHE_MAX_AGE_SECONDS=86400
 LOG_MAX_BYTES=200000
 EOF
   chmod 600 "${output_dir}/execution-node.env" 2>/dev/null || true

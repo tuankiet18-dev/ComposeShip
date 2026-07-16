@@ -92,6 +92,8 @@ override.tf.json
 .env.local
 .env.*.local
 !.env.example
+# Local runtime configuration used by the current development stack.
+env
 
 # =========================
 # Logs

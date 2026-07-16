@@ -28,15 +28,15 @@ jobs:
         run: npm ci
 
       - name: Run Lint
-        # We run lint but allow it to continue on error so it doesn't block the build immediately for minor styling issues
         run: npm run lint
-        continue-on-error: true
 
-      - name: Build Next.js
+      - name: Build React/Vite dashboard
         run: npm run build
         env:
-          # Using a dummy CI-safe value so the Next.js build doesn't fail
-          NEXT_PUBLIC_API_URL: http://localhost:5000/api
+          VITE_API_URL: /api
+
+      - name: Audit production npm dependencies
+        run: npm audit --omit=dev --audit-level=high
 
   backend:
     name: Build Backend
@@ -54,10 +54,30 @@ jobs:
           dotnet-version: '10.0.x' # Extracted from the .csproj configuration
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          dotnet restore
+          dotnet restore -p:NuGetAudit=true -p:NuGetAuditLevel=high --warnaserror:NU1903 --warnaserror:NU1904
 
       - name: Build ASP.NET Core
         run: dotnet build --no-restore --configuration Release
+
+      - name: Run backend console tests
+        run: dotnet run --project ../OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj --configuration Release
+
+      - name: Report NuGet dependency audit
+        run: dotnet list package --vulnerable --include-transitive
+
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan Git history and working tree for secrets
+        uses: gitleaks/gitleaks-action@v2
 
   worker:
     name: Check Python Worker
@@ -78,13 +98,18 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # Install flake8 to do a very basic syntax check
-          pip install flake8
+          pip install flake8 pytest pip-audit
 
       - name: Syntax Check
         # Stop the build if there are critical Python syntax errors or undefined names.
         # This is a relaxed check that won't fail on formatting (like line length).
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run worker tests
+        run: python -m pytest tests
+
+      - name: Audit Python dependencies
+        run: pip-audit -r requirements.txt
 
   docker:
     name: Validate Docker Config
@@ -94,10 +119,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Docker Compose Configuration
-        # Validates that docker-compose.yml has valid syntax and no missing variables
-        run: docker compose config -q
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.control-plane.yml config -q
+          docker compose -f docker-compose.execution.yml config -q
         
       - name: Verify Docker Builds
         # Safely attempts to build the Docker images defined in docker-compose.yml 
         # to ensure the Dockerfiles are valid. It does not push the images anywhere.
         run: docker compose build
+
+  terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./infra/aws/mvp
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Format and validate release topology
+        run: |
+          terraform init -backend=false
+          terraform fmt -check
+          terraform validate

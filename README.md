@@ -47,7 +47,7 @@ The platform leverages a robust microservices architecture orchestrated via Dock
 
 | Component | Technology Stack | Responsibility |
 |:---|:---|:---|
-| **🎨 Frontend** | Next.js 15, Tailwind, shadcn/ui | Modern, responsive dashboard for managing services and deployments. |
+| **🎨 Frontend** | React 19, Vite 7, Tailwind CSS 4 | Modern dashboard for managing projects, Compose deployments, and logs. |
 | **⚙️ API** | ASP.NET Core (.NET 10) | High-performance REST API managing state and deployment queues. |
 | **🤖 Worker** | Python 3.12 | Orchestration daemon using Docker SDK for cloning, building, and running. |
 | **🗄️ Database** | PostgreSQL 16 | Reliable persistence for project configurations and build history. |
@@ -138,36 +138,29 @@ Never put real API keys in `.env.example`; keep secrets only in `.env` or your d
 
 ## 🌍 Production Deployment
 
-Ready to go live?
-1. Deploy to an Ubuntu VPS or AWS EC2 instance.
-2. Configure a Wildcard DNS record (e.g., `*.yourdomain.com`) to your server IP.
-3. Set `TRAEFIK_DOMAIN=yourdomain.com` in your `.env`.
-4. Run `docker compose up -d`.
-5. Your apps are now live at `http://{service}-{project}.yourdomain.com`!
+The approved MVP release target is a two-node AWS topology with invite-only
+access. The control plane stores accounts and project state; the private
+execution node runs every user workload. Until a domain is purchased, the
+dashboard/API use CloudFront HTTPS and user apps use temporary Cloudflare Quick
+Tunnel HTTPS URLs.
 
-### AWS EC2 MVP With Terraform
+Read these documents before deploying:
 
-For dev/test AWS deployment, use the EC2-only Terraform stack in [`infra/aws/dev`](infra/aws/dev). It provisions one Ubuntu EC2 instance, an Elastic IP, a security group, Docker, Traefik, the API, the frontend, the worker, and a local PostgreSQL container.
+- [`docs/architecture-two-node-mvp.md`](docs/architecture-two-node-mvp.md)
+- [`docs/mvp-release-roadmap.md`](docs/mvp-release-roadmap.md)
+- [`docs/multi-node-compose-runbook.md`](docs/multi-node-compose-runbook.md)
 
-No purchased domain is required for the MVP path. Leave `domain_name = ""` and the stack will use `<public-ip>.sslip.io`, for example:
-
-```text
-http://18.136.132.209.sslip.io
-```
-
-Full setup and troubleshooting guides:
-
-- [`infra/aws/dev/README.md`](infra/aws/dev/README.md)
-- [`docs/aws-terraform-infra-guide.md`](docs/aws-terraform-infra-guide.md)
+The release remains `NO-GO` until the roadmap exit gates pass.
 
 ### Multi-Node Compose Deploy
 
-Phase-one multi-node Compose deploy uses HTTP app routes with `sslip.io`.
-Run API, PostgreSQL, frontend, and Traefik on the control-plane VM; run
-`WORKER_MODE=executor` on an execution-node VM in the same VPC/private network.
-Execution nodes register and lease jobs through `/api/execution-nodes/*`, then
-publish route targets such as `http://<execution-private-ip>:<published-port>`
-back to the control-plane Traefik registry.
+The invite-only production pilot is Compose-only. Run API, PostgreSQL,
+frontend, and the dispatcher on the control-plane VM; run `WORKER_MODE=executor`
+on an execution-node VM in the same VPC/private network. Execution nodes
+register and lease jobs through `/api/execution-nodes/*`; selected user routes
+receive temporary HTTPS Cloudflare Quick Tunnel preview URLs. `sslip.io` HTTP
+routing remains local/infrastructure diagnostics only and is not a pilot user
+flow.
 
 The public fixture repo target is:
 
@@ -179,7 +172,7 @@ The same fixture contents are also kept locally under
 `fixtures/oneclick-compose-fixture` for review and manual push.
 
 For the lowest-cost AWS production pilot in Singapore, use
-`infra/aws/phase1-multinode`. It creates one public control-plane EC2 instance,
+`infra/aws/mvp`. It creates one public control-plane EC2 instance,
 one private-only execution-node EC2 instance, one Elastic IP, no NAT Gateway, no
 ALB, and no RDS. The control-plane acts as a small NAT instance so the private
 execution-node can clone public GitHub repos and pull images without a second

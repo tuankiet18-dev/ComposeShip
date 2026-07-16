@@ -5,7 +5,7 @@
 http:
   routers:
     api-router:
-      rule: "(Host(`127.0.0.1.sslip.io`) || Host(`localhost`)) && PathPrefix(`/api`)"
+      rule: "(Host(`127.0.0.1.sslip.io`) || Host(`localhost`)) && (PathPrefix(`/api`) || Path(`/health`))"
       service: api-service
       entryPoints:
         - web

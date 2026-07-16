@@ -3,12 +3,19 @@
 # This must match TRAEFIK_NETWORK in .env
 name: oneclick
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${INFRA_LOG_MAX_SIZE:-10m}
+    max-file: ${INFRA_LOG_MAX_FILES:-3}
+
 services:
   # ─────────────────────────────────────────────
   # PostgreSQL Database
   # ─────────────────────────────────────────────
   db:
-    image: postgres:16-alpine
+    logging: *default-logging
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: oneclick-db
     restart: unless-stopped
     environment:
@@ -31,7 +38,8 @@ services:
   # Traefik Reverse Proxy
   # ─────────────────────────────────────────────
   traefik:
-    image: traefik:v3.4
+    logging: *default-logging
+    image: traefik:v3.4@sha256:06ddf61ee653caf4f4211a604e657f084f4727f762c16f826c97aafbefcb279e
     container_name: oneclick-traefik
     restart: unless-stopped
     ports:
@@ -48,6 +56,7 @@ services:
   # ASP.NET Core API
   # ─────────────────────────────────────────────
   api:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -59,6 +68,11 @@ services:
       ConnectionStrings__DefaultConnection: ${CONNECTION_STRING:-Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${POSTGRES_PASSWORD:-oneclick_dev_password}}
       Jwt__Secret: ${JWT_SECRET:-oneclick-dev-jwt-secret-minimum-32-chars}
       SecretEncryption__Key: ${ONECLICK_SECRET_KEY:-oneclick-dev-secret-key-minimum-32-chars}
+      Invites__CodePepper: ${INVITE_CODE_PEPPER:-oneclick-dev-invite-code-pepper-minimum-32-chars}
+      Invites__Required: ${INVITES_REQUIRED:-true}
+      Invites__MaxAccounts: ${INVITES_MAX_ACCOUNTS:-10}
+      ForwardedHeaders__TrustedNetworks: ${FORWARDED_HEADERS_TRUSTED_NETWORKS:-172.16.0.0/12}
+      DataProtection__KeyPath: ${DATA_PROTECTION_KEY_PATH:-/var/oneclick/data-protection}
       Jwt__Issuer: ${JWT_ISSUER:-oneclick-host}
       Jwt__Audience: ${JWT_AUDIENCE:-oneclick-host-client}
       Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-24}
@@ -76,14 +90,18 @@ services:
       Traefik__DynamicDirectory: ${TRAEFIK_DYNAMIC_DIR:-/etc/traefik/dynamic}
       OneClick__LogMaxBytes: ${LOG_MAX_BYTES:-200000}
       OneClick__AutoMigrateDatabase: ${AUTO_MIGRATE_DATABASE:-false}
+      Capacity__MaxActiveProjects: ${MAX_ACTIVE_PROJECTS:-3}
+      Capacity__MaxQueuedDeployments: ${MAX_QUEUED_DEPLOYMENTS:-10}
     ports:
       - "${API_BIND:-127.0.0.1}:5000:5000"
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - api_data_protection:/var/oneclick/data-protection
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=(Host(`localhost`) || Host(`${TRAEFIK_DOMAIN:-localhost}`)) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.rule=(Host(`localhost`) || Host(`${TRAEFIK_DOMAIN:-localhost}`)) && (PathPrefix(`/api`) || Path(`/health`))"
       - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.services.api.loadbalancer.server.port=5000"
     networks:
@@ -93,6 +111,7 @@ services:
   # Python Worker
   # ─────────────────────────────────────────────
   worker:
+    logging: *default-logging
     build:
       context: ./worker
       dockerfile: Dockerfile
@@ -108,6 +127,7 @@ services:
       WORKSPACE_DIR: ${WORKSPACE_DIR:-/tmp/oneclick-workspace}
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-localhost}
       TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-oneclick_oneclick-net}
+      CLOUDFLARED_IMAGE: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared@sha256:188bb03589a32affed3cf4d0590565ffe67b78866e6b5582574afab2b705bafe}
       CONTROL_PLANE_API_URL: ${CONTROL_PLANE_API_URL:-http://api:5000/api}
       EXECUTION_NODE_ID: ${EXECUTION_NODE_ID:-}
       EXECUTION_NODE_TOKEN: ${EXECUTION_NODE_TOKEN:-}
@@ -116,6 +136,17 @@ services:
       EXECUTION_NODE_REGISTRATION_TOKEN: ${EXECUTION_NODE_REGISTRATION_TOKEN:-}
       ONECLICK_SECRET_KEY: ${ONECLICK_SECRET_KEY:-oneclick-dev-secret-key-minimum-32-chars}
       ONECLICK_ENABLE_POST_START_COMMANDS: ${ONECLICK_ENABLE_POST_START_COMMANDS:-false}
+      CONTAINER_MEMORY_LIMIT: ${CONTAINER_MEMORY_LIMIT:-256m}
+      CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-0.5}
+      CONTAINER_PIDS_LIMIT: ${CONTAINER_PIDS_LIMIT:-256}
+      CONTAINER_LOG_MAX_SIZE: ${CONTAINER_LOG_MAX_SIZE:-10m}
+      CONTAINER_LOG_MAX_FILES: ${CONTAINER_LOG_MAX_FILES:-3}
+      DISK_MIN_FREE_BYTES: ${DISK_MIN_FREE_BYTES:-5368709120}
+      DISK_MIN_FREE_PERCENT: ${DISK_MIN_FREE_PERCENT:-10}
+      DISK_CLEANUP_FREE_PERCENT: ${DISK_CLEANUP_FREE_PERCENT:-20}
+      CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-900}
+      CLEANUP_ARTIFACT_MAX_AGE_SECONDS: ${CLEANUP_ARTIFACT_MAX_AGE_SECONDS:-86400}
+      CLEANUP_BUILD_CACHE_MAX_AGE_SECONDS: ${CLEANUP_BUILD_CACHE_MAX_AGE_SECONDS:-86400}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - worker_workspace:/tmp/oneclick-workspace
@@ -130,6 +161,7 @@ services:
   # React + Vite Frontend Dashboard
   # ─────────────────────────────────────────────
   frontend:
+    logging: *default-logging
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -152,6 +184,7 @@ services:
 
 volumes:
   postgres_data:
+  api_data_protection:
   worker_workspace:
 
 networks:

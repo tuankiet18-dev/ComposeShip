@@ -79,7 +79,7 @@ docker compose -p oneclick-execution -f docker-compose.execution.yml down -v
 Chạy lệnh này cho Windows Docker Desktop:
 
 ```powershell
-bash -lc "CONTROL_PLANE_PUBLIC_IP=127.0.0.1 CONTROL_PLANE_API_BIND=127.0.0.1 CONTROL_PLANE_API_HOST=host.docker.internal CONTROL_PLANE_POSTGRES_PASSWORD=12345 EXECUTION_NODE_PRIVATE_IP=host.docker.internal ./scripts/render-multinode-env.sh"
+bash -lc "CONTROL_PLANE_PUBLIC_IP=127.0.0.1 CONTROL_PLANE_API_BIND=127.0.0.1 CONTROL_PLANE_API_HOST=host.docker.internal CONTROL_PLANE_POSTGRES_PASSWORD=12345 EXECUTION_NODE_PRIVATE_IP=host.docker.internal AUTH_COOKIE_SECURE=false ./scripts/render-multinode-env.sh"
 ```
 
 Kỳ vọng:
@@ -95,6 +95,7 @@ Các giá trị quan trọng:
 TRAEFIK_DOMAIN=127.0.0.1.sslip.io
 API_BIND=127.0.0.1
 AUTO_MIGRATE_DATABASE=true
+AUTH_COOKIE_SECURE=false
 CONTROL_PLANE_API_URL=http://host.docker.internal:5000/api
 COMPOSE_PROJECT_NAME=oneclick-execution
 ```
@@ -102,13 +103,13 @@ COMPOSE_PROJECT_NAME=oneclick-execution
 ## Start Control-Plane
 
 ```powershell
-docker compose -f docker-compose.control-plane.phase1.yml -f docker-compose.control-plane.local.yml --env-file .generated\multinode\control-plane.env up -d --build
+docker compose -f docker-compose.control-plane.yml --env-file .generated\multinode\control-plane.env up -d --build
 ```
 
 Kiểm tra:
 
 ```powershell
-docker compose -f docker-compose.control-plane.phase1.yml -f docker-compose.control-plane.local.yml --env-file .generated\multinode\control-plane.env ps
+docker compose -f docker-compose.control-plane.yml --env-file .generated\multinode\control-plane.env ps
 ```
 
 Kỳ vọng:

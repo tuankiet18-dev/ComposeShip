@@ -1,0 +1,36 @@
+aws_region   = "ap-southeast-1"
+project_name = "oneclick-mvp"
+
+# Existing EC2 key pair in ap-southeast-1.
+key_name = "your-keypair-name"
+
+# Replace with your public IP, for example "203.0.113.10/32".
+admin_cidr_blocks = ["YOUR_PUBLIC_IP/32"]
+
+# Required: reviewed immutable 40-character commit SHA. Branches and tags are
+# deliberately rejected so the deployed source always matches release evidence.
+repository_url = "https://github.com/HienMinh58/oneclick-host.git"
+repository_ref = "REPLACE_WITH_REVIEWED_40_CHARACTER_COMMIT_SHA"
+
+# Cheapest practical baseline. Upgrade execution_node_instance_type to t4g.medium
+# if Docker builds run out of memory.
+control_plane_instance_type = "t4g.small"
+execution_node_instance_type = "t4g.small"
+execution_node_min_size = 1
+execution_node_desired_capacity = 1
+execution_node_max_size = 2
+control_plane_root_volume_size_gb = 20
+execution_node_root_volume_size_gb = 40
+
+# Optional. Leave empty to let Terraform generate random values.
+postgres_password = ""
+jwt_secret = ""
+oneclick_secret_key = ""
+invite_code_pepper = ""
+execution_node_registration_token = ""
+execution_node_token = ""
+
+# Cost-oriented CloudFront footprint for the dashboard.
+cloudfront_price_class = "PriceClass_100"
+backup_retention_days  = 14
+alert_email            = ""

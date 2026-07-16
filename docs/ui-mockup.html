@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OneClickHost - Deploy Setup Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { primary: '#3b82f6' }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="min-h-screen p-8 text-slate-800 flex justify-center">
+    <div class="w-full max-w-3xl">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-slate-900 tracking-tight">Configure Services</h1>
+            <p class="text-slate-500 mt-2">We've analyzed your repository. Configure routing and environment variables before deploying.</p>
+        </div>
+
+        <div class="space-y-6">
+            
+            <!-- Service: API (Expanded by default) -->
+            <div x-data="{ expanded: true, isPublic: true }" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-200 hover:shadow-md">
+                <!-- Card Header -->
+                <div @click="expanded = !expanded" class="px-6 py-4 flex items-center justify-between cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-server"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-lg">api</h3>
+                            <div class="flex items-center gap-3 mt-1">
+                                <span class="bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-md text-xs font-mono font-medium">Port 8080</span>
+                                <span x-show="isPublic" class="text-emerald-600 flex items-center gap-1.5 text-xs font-medium"><i class="fa-solid fa-globe"></i> Public Route</span>
+                                <span x-show="!isPublic" class="text-slate-500 flex items-center gap-1.5 text-xs font-medium"><i class="fa-solid fa-lock"></i> Internal Only</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-slate-400">
+                        <i class="fa-solid fa-chevron-down transition-transform duration-300" :class="expanded ? 'rotate-180' : ''"></i>
+                    </div>
+                </div>
+
+                <!-- Card Body -->
+                <div x-show="expanded" x-collapse>
+                    <div class="p-6 space-y-8">
+                        <!-- Routing Section -->
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="text-base font-semibold text-slate-900">Networking & Routing</h4>
+                                    <p class="text-sm text-slate-500 mt-1">Expose this service to the internet to receive external traffic.</p>
+                                </div>
+                                <!-- Toggle Button -->
+                                <button type="button" 
+                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2" 
+                                    :class="isPublic ? 'bg-blue-600' : 'bg-slate-200'"
+                                    @click="isPublic = !isPublic" role="switch">
+                                    <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" 
+                                        :class="isPublic ? 'translate-x-5' : 'translate-x-0'"></span>
+                                </button>
+                            </div>
+
+                            <div x-show="isPublic" x-transition class="bg-slate-50/80 p-5 rounded-xl border border-slate-200 grid grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Route Path</label>
+                                    <div class="flex rounded-lg shadow-sm">
+                                        <span class="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-500 text-sm font-medium">/</span>
+                                        <input type="text" value="api" class="flex-1 min-w-0 block w-full px-4 py-2.5 rounded-none rounded-r-lg text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500 border bg-white outline-none">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Target Internal Port</label>
+                                    <select class="block w-full px-4 py-2.5 rounded-lg text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500 border bg-white shadow-sm outline-none">
+                                        <option value="8080" selected>8080 (Auto-detected)</option>
+                                        <option value="custom">Custom port...</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-slate-100">
+
+                        <!-- Env Vars Section -->
+                        <div class="space-y-5">
+                            <div>
+                                <h4 class="text-base font-semibold text-slate-900">Environment Variables</h4>
+                                <p class="text-sm text-slate-500 mt-1">Provide values for the variables requested by this service.</p>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-12 gap-4 items-start">
+                                    <div class="col-span-5 pt-2.5">
+                                        <label class="text-sm font-mono text-slate-700 font-medium break-all">Jwt__SigningKey</label>
+                                    </div>
+                                    <div class="col-span-7 relative">
+                                        <input type="password" placeholder="Enter secure secret..." class="block w-full px-4 py-2.5 rounded-lg text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500 border placeholder-slate-400 shadow-sm outline-none">
+                                        <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
+                                            <i class="fa-solid fa-lock text-slate-400 text-sm"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-12 gap-4 items-start">
+                                    <div class="col-span-5 pt-2.5">
+                                        <label class="text-sm font-mono text-slate-700 font-medium break-all">ConnectionStrings__Default</label>
+                                    </div>
+                                    <div class="col-span-7">
+                                        <input type="text" placeholder="Server=postgres;Database=..." class="block w-full px-4 py-2.5 rounded-lg text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500 border placeholder-slate-400 shadow-sm outline-none">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button class="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1.5 pt-2">
+                                <i class="fa-solid fa-plus text-xs"></i> Add another variable
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service: Postgres (Private Database Example) -->
+            <div x-data="{ expanded: false, isPublic: false }" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-200 hover:shadow-md">
+                <!-- Card Header -->
+                <div @click="expanded = !expanded" class="px-6 py-4 flex items-center justify-between cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-database"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-lg">postgres</h3>
+                            <div class="flex items-center gap-3 mt-1">
+                                <span class="bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-md text-xs font-mono font-medium">Port 5432</span>
+                                <span x-show="!isPublic" class="text-slate-500 flex items-center gap-1.5 text-xs font-medium"><i class="fa-solid fa-lock"></i> Internal Only</span>
+                                <span x-show="isPublic" class="text-emerald-600 flex items-center gap-1.5 text-xs font-medium"><i class="fa-solid fa-globe"></i> Public Route</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-slate-400">
+                        <i class="fa-solid fa-chevron-down transition-transform duration-300" :class="expanded ? 'rotate-180' : ''"></i>
+                    </div>
+                </div>
+
+                <!-- Card Body -->
+                <div x-show="expanded" x-collapse>
+                    <div class="p-6 space-y-8">
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="text-base font-semibold text-slate-900">Networking & Routing</h4>
+                                    <p class="text-sm text-slate-500 mt-1">Databases are usually kept internal for security.</p>
+                                </div>
+                                <button type="button" 
+                                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2" 
+                                    :class="isPublic ? 'bg-blue-600' : 'bg-slate-200'"
+                                    @click="isPublic = !isPublic" role="switch">
+                                    <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" 
+                                        :class="isPublic ? 'translate-x-5' : 'translate-x-0'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <hr class="border-slate-100">
+
+                        <div class="space-y-5">
+                            <div>
+                                <h4 class="text-base font-semibold text-slate-900">Environment Variables</h4>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-12 gap-4 items-start">
+                                    <div class="col-span-5 pt-2.5">
+                                        <label class="text-sm font-mono text-slate-700 font-medium">POSTGRES_PASSWORD</label>
+                                    </div>
+                                    <div class="col-span-7 relative">
+                                        <input type="password" placeholder="Enter DB password..." class="block w-full px-4 py-2.5 rounded-lg text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500 border placeholder-slate-400 shadow-sm outline-none">
+                                        <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
+                                            <i class="fa-solid fa-lock text-slate-400 text-sm"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="mt-10 flex justify-end">
+            <button class="bg-slate-900 hover:bg-slate-800 text-white px-8 py-3 rounded-xl font-semibold shadow-md transition-all hover:shadow-lg flex items-center gap-2">
+                Deploy Project <i class="fa-solid fa-rocket text-sm"></i>
+            </button>
+        </div>
+    </div>
+</body>
+</html>
