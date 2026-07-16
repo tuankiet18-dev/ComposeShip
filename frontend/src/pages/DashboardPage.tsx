@@ -22,17 +22,20 @@ import {
   formatRelativeTime,
   type AppDeployment,
 } from "@/lib/deployments";
-import { api, type ProjectSummary } from "@/lib/api";
+import { api, type ProjectSummary, type RuntimeCapacity } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 export function DashboardPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [deployments, setDeployments] = useState<AppDeployment[]>([]);
+  const [runtimeCapacity, setRuntimeCapacity] = useState<RuntimeCapacity | null>(null);
   const [loading, setLoading] = useState(true);
   const [deploymentsLoading, setDeploymentsLoading] = useState(true);
 
   useEffect(() => {
+    api.getRuntimeCapacity().then(setRuntimeCapacity).catch(console.error);
     api
       .getProjects()
       .then((items) => {
@@ -96,17 +99,17 @@ export function DashboardPage() {
         }
       />
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">{stat.label}</span>
-                <stat.icon className={`h-4 w-4 ${stat.tone}`} />
+          <div key={stat.label} className="group overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+            <div className="flex items-center gap-3">
+              <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/50", stat.tone)}>
+                <stat.icon className="h-5 w-5" />
               </div>
-              <div className="mt-3 text-2xl font-semibold tracking-tight">{loading ? "-" : stat.value}</div>
-            </CardContent>
-          </Card>
+              <span className="text-sm font-semibold text-muted-foreground">{stat.label}</span>
+            </div>
+            <div className="mt-4 text-3xl font-bold tracking-tight text-foreground">{loading ? "-" : stat.value}</div>
+          </div>
         ))}
       </section>
 
@@ -187,6 +190,11 @@ export function DashboardPage() {
           </Card>
           <div className="mt-3 rounded-lg border border-border bg-card p-4">
             <StatusRow icon={CheckCircle2} label="API" value={loading ? "Checking" : "Connected"} />
+            <StatusRow
+              icon={Activity}
+              label="Execution"
+              value={runtimeCapacity ? (runtimeCapacity.canAcceptDeployment ? "Available" : "Busy") : "Checking"}
+            />
             <StatusRow icon={Activity} label="Queue" value={`${stats[3].value} active`} />
           </div>
         </div>

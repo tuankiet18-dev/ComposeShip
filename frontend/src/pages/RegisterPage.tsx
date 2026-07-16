@@ -2,6 +2,7 @@ import { Boxes, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
@@ -11,6 +12,8 @@ export function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [acceptedPilotTerms, setAcceptedPilotTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -20,7 +23,7 @@ export function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      await register(email, password, fullName);
+      await register(email, password, fullName, inviteCode, acceptedPilotTerms);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -41,7 +44,7 @@ export function RegisterPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Free to start. No credit card.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Invitation-only pilot access.</p>
           </div>
           {success ? (
             <div className="space-y-4 text-center">
@@ -55,6 +58,18 @@ export function RegisterPage() {
           ) : (
             <>
               <div className="space-y-3">
+                <div>
+                  <Label htmlFor="inviteCode">Invite code</Label>
+                  <Input
+                    id="inviteCode"
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                    className="mt-1.5 font-mono"
+                    autoComplete="off"
+                    minLength={20}
+                    required
+                  />
+                </div>
                 <div>
                   <Label htmlFor="fullName">Full name</Label>
                   <Input id="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1.5" required />
@@ -76,9 +91,20 @@ export function RegisterPage() {
                   />
                   <p className="mt-1 text-xs text-muted-foreground">At least 8 characters.</p>
                 </div>
+                <div className="flex items-start gap-2 pt-1">
+                  <Checkbox
+                    id="pilot-terms"
+                    checked={acceptedPilotTerms}
+                    onCheckedChange={(checked) => setAcceptedPilotTerms(checked === true)}
+                    aria-required="true"
+                  />
+                  <Label htmlFor="pilot-terms" className="text-xs font-normal leading-5 text-muted-foreground">
+                    I agree to the <Link to="/pilot-policies" className="font-medium text-primary hover:underline">invite-only pilot policies</Link>.
+                  </Label>
+                </div>
                 {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || !acceptedPilotTerms}>
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                 {loading ? "Creating account..." : "Create account"}
               </Button>

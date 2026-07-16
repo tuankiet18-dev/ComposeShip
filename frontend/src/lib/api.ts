@@ -39,10 +39,10 @@ class ApiClient {
     return JSON.parse(text);
   }
 
-  async register(email: string, password: string, fullName: string) {
+  async register(email: string, password: string, fullName: string, inviteCode: string, acceptedPilotTerms: boolean) {
     return this.request<{ message: string }>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, fullName }),
+      body: JSON.stringify({ email, password, fullName, inviteCode, acceptedPilotTerms }),
     });
   }
 
@@ -67,6 +67,10 @@ class ApiClient {
 
   async getProjects() {
     return this.request<ProjectSummary[]>("/projects");
+  }
+
+  async getRuntimeCapacity() {
+    return this.request<RuntimeCapacity>("/projects/runtime-capacity");
   }
 
   async createProject(name: string, description?: string) {
@@ -198,6 +202,12 @@ export type ProjectSummary = {
   serviceCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type RuntimeCapacity = {
+  canAcceptDeployment: boolean;
+  status: "available" | "busy";
+  retryAfterSeconds: number;
 };
 
 export type ServiceSummary = {

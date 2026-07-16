@@ -87,6 +87,9 @@ export function HomePage() {
           </div>
         </section>
       </main>
+      <footer className="mx-auto flex max-w-7xl justify-end px-6 pb-8 text-xs text-muted-foreground">
+        <Link to="/pilot-policies" className="hover:text-foreground hover:underline">Pilot policies</Link>
+      </footer>
     </div>
   );
 }

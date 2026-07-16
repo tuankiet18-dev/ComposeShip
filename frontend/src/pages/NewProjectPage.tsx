@@ -36,7 +36,7 @@ export function NewProjectPage() {
     <div className="space-y-6">
       <PageHeader
         title="New project"
-        description="Create a deployment workspace for a service or Compose stack."
+        description="Create a deployment workspace for a Docker Compose stack."
         actions={
           <Button variant="outline" asChild>
             <Link to="/projects">

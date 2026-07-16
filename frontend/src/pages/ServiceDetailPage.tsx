@@ -31,7 +31,7 @@ export function ServiceDetailPage() {
     branch: "",
     subfolder: "",
     serviceType: "",
-    exposureProvider: "traefik" as ExposureProvider,
+    exposureProvider: "cloudflare_quick" as ExposureProvider,
     networkAliases: "",
   });
 
@@ -47,7 +47,7 @@ export function ServiceDetailPage() {
           branch: data.branch || "main",
           subfolder: data.subfolder || "",
           serviceType: data.serviceType || "frontend",
-          exposureProvider: data.exposureProvider || "traefik",
+          exposureProvider: data.exposureProvider || "cloudflare_quick",
           networkAliases: data.networkAliases || "",
         });
       })
@@ -362,8 +362,7 @@ export function ServiceDetailPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="traefik">Traefik</SelectItem>
-                            <SelectItem value="cloudflare_quick">Cloudflare quick</SelectItem>
+                            <SelectItem value="cloudflare_quick">HTTPS preview</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

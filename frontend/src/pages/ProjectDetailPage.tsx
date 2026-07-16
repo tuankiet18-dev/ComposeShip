@@ -37,7 +37,7 @@ export function ProjectDetailPage() {
   const [branch, setBranch] = useState("main");
   const [subfolder, setSubfolder] = useState("");
   const [serviceType, setServiceType] = useState("frontend");
-  const [exposureProvider, setExposureProvider] = useState<ExposureProvider>("traefik");
+  const [exposureProvider, setExposureProvider] = useState<ExposureProvider>("cloudflare_quick");
   const [networkAliases, setNetworkAliases] = useState("");
 
   const loadProject = useCallback(() => {
@@ -83,7 +83,7 @@ export function ProjectDetailPage() {
       setRepoUrl("");
       setBranch("main");
       setSubfolder("");
-      setExposureProvider("traefik");
+      setExposureProvider("cloudflare_quick");
       setNetworkAliases("");
       setDialogOpen(false);
       loadProject();
@@ -111,6 +111,7 @@ export function ProjectDetailPage() {
 
   const publicService = serviceType !== "database" && serviceType !== "redis";
   const hasComposeConfig = Boolean(project?.composeConfig?.repoUrl);
+  const composeOnlyProject = project?.deploymentMode === "compose";
   const defaultTab = "compose";
 
   const deployService = async (serviceId: string) => {
@@ -181,7 +182,7 @@ export function ProjectDetailPage() {
               {pendingAction === "delete-project" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Delete
             </Button>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            {!composeOnlyProject && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button disabled={cleanupInProgress || cleanupFailed}>
                   <Plus className="h-4 w-4" /> Add service
@@ -233,8 +234,7 @@ export function ProjectDetailPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="traefik">Traefik</SelectItem>
-                          <SelectItem value="cloudflare_quick">Cloudflare quick</SelectItem>
+                          <SelectItem value="cloudflare_quick">HTTPS preview</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -254,7 +254,7 @@ export function ProjectDetailPage() {
                   </div>
                 </form>
               </DialogContent>
-            </Dialog>
+            </Dialog>}
           </>
         }
       />
@@ -332,7 +332,7 @@ export function ProjectDetailPage() {
                   <ServerCog className="h-10 w-10 text-muted-foreground" />
                   <div>
                     <p className="font-medium">No services yet</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Add a service or configure a Compose stack.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Configure the Compose stack to discover its runtime services.</p>
                   </div>
                 </CardContent>
               </Card>

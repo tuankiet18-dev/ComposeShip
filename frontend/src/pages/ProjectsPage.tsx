@@ -110,9 +110,9 @@ export function ProjectsPage() {
       </div>
 
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((item) => (
-            <div key={item} className="h-32 animate-pulse rounded-xl border border-border bg-card" />
+            <div key={item} className="h-32 animate-pulse rounded-xl border border-border bg-card/50" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -129,7 +129,7 @@ export function ProjectsPage() {
           }
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}

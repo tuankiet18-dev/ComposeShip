@@ -618,7 +618,7 @@ function GraphEdgePath({
         markerEnd={`url(#arrow-${edge.type})`}
       />
       <g transform={`translate(${labelX} ${labelY})`}>
-        <rect x="-45" y="-11" width="90" height="22" rx="5" fill="#ffffff" stroke="#e2e8f0" />
+        <rect x="-45" y="-11" width="90" height="22" rx="10" fill="#ffffff" stroke="#e2e8f0" />
         <text textAnchor="middle" dominantBaseline="middle" className="fill-slate-600 text-[10px]">
           {edgeLabels[edge.type]}
         </text>
@@ -652,7 +652,7 @@ function GraphNodeShape({
       <rect
         width={node.width}
         height={node.height}
-        rx="8"
+        rx="16"
         fill={colors.fill}
         stroke={selected ? colors.accent : colors.stroke}
         strokeWidth={selected ? 3 : 1.5}

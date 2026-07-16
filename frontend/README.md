@@ -13,10 +13,11 @@ The app runs on `http://localhost:3000` by default and reads the backend base UR
 VITE_API_URL=http://localhost:5000/api
 ```
 
-For Docker-based local development with hot reload:
+To run the complete local stack with production-like frontend assets:
 
 ```bash
-docker compose -f ../docker-compose.yml -f ../docker-compose.dev.yml up frontend
+cd ..
+docker compose up -d --build
 ```
 
-`docker-compose.dev.yml` bind-mounts this folder into the container and runs Vite, so edits under `src/` update the browser immediately.
+Use `npm run dev` from this directory when frontend hot reload is required.

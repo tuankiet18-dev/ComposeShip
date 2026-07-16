@@ -2,10 +2,10 @@ import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
+  ChevronDown,
+  Lock,
   Cloud,
   ExternalLink,
-  Eye,
-  EyeOff,
   GitBranch,
   Globe2,
   KeyRound,
@@ -52,10 +52,6 @@ type ComposeStackPanelProps = {
 
 const fixtureRepo = "https://github.com/tuankiet18-dev/oneclick-compose-fixture";
 const secretMask = "******";
-const exposureOptions = [
-  { value: "traefik", label: "Traefik" },
-  { value: "cloudflare_quick", label: "Cloudflare quick" },
-] as const;
 
 export function ComposeStackPanel({
   project,
@@ -73,7 +69,8 @@ export function ComposeStackPanel({
   const [inspectResult, setInspectResult] = useState<ComposeInspectResponse | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showSecrets, setShowSecrets] = useState(false);
+  const showSecrets = false;
+  const [expandedServices, setExpandedServices] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setRepoUrl(config?.repoUrl || "");
@@ -86,14 +83,6 @@ export function ComposeStackPanel({
   }, [config]);
 
   const services = useMemo(() => inspectResult?.services || [], [inspectResult]);
-  const serviceNames = useMemo(() => {
-    const values = new Set<string>();
-    services.forEach((service) => values.add(service.name));
-    routes.forEach((route) => route.serviceName && values.add(route.serviceName));
-    envVars.forEach((envVar) => envVar.serviceName && values.add(envVar.serviceName));
-    return Array.from(values).sort();
-  }, [envVars, routes, services]);
-
   const latestDeployment = project.recentProjectDeployments[0] || null;
   const routeTargets = latestDeployment?.routeTargets || [];
   const stateful = inspectResult?.stateful || config?.stateful || null;
@@ -194,23 +183,6 @@ export function ComposeStackPanel({
     ]);
     setEnvVars([]);
     toast.success("Fixture configuration filled");
-  };
-
-  const addRoute = (serviceName = "", internalPort = 3000) => {
-    setRoutes((items) => [
-      ...items,
-      {
-        serviceName,
-        routeSlug: toSlug(serviceName || "app"),
-        internalPort,
-        exposureProvider: "traefik",
-        healthPath: serviceName.toLowerCase().includes("api") ? "/health" : "/",
-      },
-    ]);
-  };
-
-  const addEnvVar = (serviceName = "") => {
-    setEnvVars((items) => [...items, { serviceName, key: "", value: "", isSecret: true }]);
   };
 
   return (
@@ -346,239 +318,190 @@ export function ComposeStackPanel({
         </CardContent>
       </Card>
 
-      {services.length > 0 && (
-        <Card>
-          <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Server className="h-4 w-4 text-primary" />
-                Discovered services
-              </CardTitle>
-              <CardDescription>Promote only user-facing services to public routes. Keep databases and caches private.</CardDescription>
-            </div>
-            <Badge variant="outline">{services.length} services found</Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {services.map((service) => (
-                <div key={service.name} className="rounded-md border bg-background p-3 transition-colors hover:border-primary/40">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <p className="truncate font-medium">{service.name}</p>
-                        {service.looksPublic ? <Badge variant="secondary">public candidate</Badge> : <Badge variant="outline">internal</Badge>}
+
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Configure Services</h2>
+          <p className="mt-1 text-sm text-muted-foreground">We've analyzed your repository. Configure routing and environment variables before deploying.</p>
+        </div>
+
+        {services.length === 0 ? (
+          <EmptyInline title="No services discovered" description="Make sure your docker-compose.yml is valid." />
+        ) : (
+          <div className="space-y-4">
+            {services.map((service) => {
+              const serviceRoutes = routes.map((r, i) => ({ ...r, originalIndex: i })).filter((r) => r.serviceName === service.name);
+              const isPublic = serviceRoutes.length > 0;
+              const serviceEnvs = envVars.map((e, i) => ({ ...e, originalIndex: i })).filter((e) => e.serviceName === service.name);
+              const isExpanded = expandedServices.has(service.name);
+              const panelId = `service-${service.name}-configuration`;
+
+              return (
+                <div key={service.name} className="group overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:shadow-md">
+                  <div
+                    className="flex cursor-pointer items-center justify-between border-b border-border/50 bg-muted/20 px-6 py-4 transition-colors hover:bg-muted/40"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
+                    aria-controls={panelId}
+                    onClick={() => setExpandedServices((items) => toggleService(items, service.name))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setExpandedServices((items) => toggleService(items, service.name));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Server className="h-6 w-6" />
                       </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {service.image || service.buildContext || "compose service"}
-                      </p>
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground">{service.name}</h3>
+                        <div className="mt-1 flex items-center gap-3">
+                          <span className="rounded-md border border-border bg-muted/50 px-2.5 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+                            Port {service.ports[0] || "N/A"}
+                          </span>
+                          {isPublic ? (
+                            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-500">
+                              <Globe2 className="h-3.5 w-3.5" /> Public Route
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                              <Lock className="h-3.5 w-3.5" /> Internal Only
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    {service.looksPublic ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => addRoute(service.name, service.ports[0] || 3000)}>
-                        <Plus className="h-4 w-4" />
-                        Route
-                      </Button>
-                    ) : (
-                      <Badge variant="outline" className="shrink-0">Private</Badge>
-                    )}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    {(service.ports.length ? service.ports : ["no public ports"]).map((port) => (
-                      <span key={String(port)} className="rounded bg-muted px-2 py-1 font-mono">
-                        {port}
-                      </span>
-                    ))}
-                  </div>
-                  {service.environmentKeys.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {service.environmentKeys.slice(0, 8).map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setEnvVars((items) => [...items, { serviceName: service.name, key, value: "", isSecret: true }])}
-                          className="cursor-pointer rounded border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-                        >
-                          {key}
-                        </button>
-                      ))}
+                    <div className="text-muted-foreground">
+                      <ChevronDown className={cn("h-5 w-5 transition-transform duration-300", isExpanded && "rotate-180")} />
                     </div>
+                  </div>
+
+                  {isExpanded && (
+                  <div id={panelId}>
+                    <div className="space-y-8 p-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-base font-semibold">Networking & Routing</h4>
+                            <p className="mt-1 text-sm text-muted-foreground">Expose this service to the internet to receive external traffic.</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${isPublic ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (isPublic) {
+                                setRoutes(items => items.filter(r => r.serviceName !== service.name));
+                              } else {
+                                setRoutes(items => [...items, { serviceName: service.name, routeSlug: service.name, internalPort: service.ports[0] || 3000, exposureProvider: "traefik" }]);
+                              }
+                            }}
+                          >
+                            <span className={`pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isPublic ? 'translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+
+                        {isPublic && serviceRoutes.map((route) => (
+                          <div key={route.originalIndex} className="grid grid-cols-1 gap-6 rounded-xl border border-border bg-muted/20 p-5 md:grid-cols-2">
+                            <Field label="Route Path" htmlFor={`route-slug-${route.originalIndex}`}>
+                              <div className="flex rounded-lg shadow-sm">
+                                <span className="inline-flex items-center rounded-l-lg border border-r-0 border-input bg-muted px-4 text-sm font-medium text-muted-foreground">/</span>
+                                <Input
+                                  id={`route-slug-${route.originalIndex}`}
+                                  value={route.routeSlug}
+                                  onChange={(e) => updateRoute(route.originalIndex, { routeSlug: toSlug(e.target.value) })}
+                                  className="rounded-l-none"
+                                />
+                              </div>
+                            </Field>
+                            <Field label="Target Internal Port" htmlFor={`route-port-${route.originalIndex}`}>
+                              <Input
+                                id={`route-port-${route.originalIndex}`}
+                                type="number"
+                                value={route.internalPort}
+                                onChange={(e) => updateRoute(route.originalIndex, { internalPort: Number(e.target.value) })}
+                              />
+                            </Field>
+                          </div>
+                        ))}
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-base font-semibold">Environment Variables</h4>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setEnvVars(items => [...items, { serviceName: service.name, key: "", value: "", isSecret: false }])}>
+                            <Plus className="mr-2 h-4 w-4" /> Add Env Var
+                          </Button>
+                        </div>
+
+                        {serviceEnvs.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+                            No environment variables configured for this service.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {serviceEnvs.map((envVar) => (
+                              <div key={envVar.originalIndex} className="grid grid-cols-[1fr_1.5fr_auto_auto] items-center gap-3 rounded-lg border border-border bg-background p-2">
+                                <Input
+                                  value={envVar.key}
+                                  onChange={(e) => updateEnvVar(envVar.originalIndex, { key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_") })}
+                                  placeholder="KEY"
+                                  className="h-9 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                                />
+                                <div className="h-6 w-px bg-border" />
+                                <Input
+                                  type={envVar.isSecret && !showSecrets ? "password" : "text"}
+                                  value={envVar.value}
+                                  onChange={(e) => updateEnvVar(envVar.originalIndex, { value: e.target.value })}
+                                  placeholder={envVar.isSecret ? secretMask : "Value"}
+                                  className="h-9 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                                />
+                                <label className="flex cursor-pointer items-center gap-2 px-3 text-sm text-muted-foreground">
+                                  <Checkbox checked={envVar.isSecret} onCheckedChange={(val) => updateEnvVar(envVar.originalIndex, { isSecret: Boolean(val) })} />
+                                  Secret
+                                </label>
+                                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setEnvVars(items => items.filter((_, idx) => idx !== envVar.originalIndex))}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Auto-detected keys suggestion */}
+                        {service.environmentKeys.length > 0 && serviceEnvs.length === 0 && (
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            <span className="text-xs text-muted-foreground flex items-center mr-1">Auto-detected:</span>
+                            {service.environmentKeys.slice(0, 5).map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setEnvVars((items) => [...items, { serviceName: service.name, key, value: "", isSecret: true }])}
+                                className="cursor-pointer rounded border border-border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                              >
+                                {key} <Plus className="inline h-3 w-3" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.8fr)]">
-        <Card className="min-w-0">
-          <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Globe2 className="h-4 w-4 text-primary" />
-                Public routes
-              </CardTitle>
-              <CardDescription>Each route becomes a public URL after deployment.</CardDescription>
-            </div>
-            <Button type="button" variant="outline" onClick={() => addRoute()}>
-              <Plus className="h-4 w-4" />
-              Add route
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {duplicateRouteSlugs.length > 0 && <InlineWarning text={`Duplicate route slug: ${duplicateRouteSlugs.join(", ")}`} />}
-            {routes.length === 0 ? (
-              <EmptyInline title="No public routes" description="Add a route for the app surface users should reach." />
-            ) : (
-              <div className="space-y-2">
-                {routes.map((route, index) => (
-                  <div key={`${route.serviceName}-${index}`} className="rounded-md border bg-background p-3">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">Route {index + 1}</p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {route.serviceName || "service"}:{route.internalPort || "port"} {"->"} /{route.routeSlug || "slug"}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => setRoutes((items) => items.filter((_, itemIndex) => itemIndex !== index))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remove
-                      </Button>
-                    </div>
-                    <div className="grid gap-3 2xl:grid-cols-2">
-                      <Field label="Service" htmlFor={`route-service-${index}`}>
-                        <Input
-                          id={`route-service-${index}`}
-                          list="compose-service-names"
-                          value={route.serviceName}
-                          onChange={(event) => updateRoute(index, { serviceName: event.target.value })}
-                          placeholder="frontend"
-                        />
-                      </Field>
-                      <Field label="Route slug" htmlFor={`route-slug-${index}`}>
-                        <Input
-                          id={`route-slug-${index}`}
-                          value={route.routeSlug}
-                          onChange={(event) => updateRoute(index, { routeSlug: toSlug(event.target.value) })}
-                          placeholder="app"
-                        />
-                      </Field>
-                      <Field label="Internal port" htmlFor={`route-port-${index}`}>
-                        <Input
-                          id={`route-port-${index}`}
-                          type="number"
-                          min={1}
-                          max={65535}
-                          value={route.internalPort}
-                          onChange={(event) => updateRoute(index, { internalPort: Number(event.target.value) })}
-                        />
-                      </Field>
-                      <Field label="Exposure" htmlFor={`route-exposure-${index}`}>
-                        <Select
-                          value={route.exposureProvider || "traefik"}
-                          onValueChange={(value) => updateRoute(index, { exposureProvider: value as ComposeRoute["exposureProvider"] })}
-                        >
-                          <SelectTrigger id={`route-exposure-${index}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {exposureOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field label="Health path" htmlFor={`route-health-${index}`}>
-                        <Input
-                          id={`route-health-${index}`}
-                          value={route.healthPath || ""}
-                          onChange={(event) => updateRoute(index, { healthPath: event.target.value })}
-                          placeholder="/health"
-                        />
-                      </Field>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <datalist id="compose-service-names">
-              {serviceNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <KeyRound className="h-4 w-4 text-primary" />
-                Service env
-              </CardTitle>
-              <CardDescription>Env vars are scoped to Compose service names and secrets stay masked.</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="icon" onClick={() => setShowSecrets((value) => !value)} aria-label={showSecrets ? "Hide secrets" : "Show secrets"}>
-                {showSecrets ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => addEnvVar()}>
-                <Plus className="h-4 w-4" />
-                Add env
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {duplicateEnvKeys.length > 0 && <InlineWarning text={`Duplicate environment key: ${duplicateEnvKeys.join(", ")}`} />}
-            {envVars.length === 0 ? (
-              <EmptyInline title="No service env vars" description="Add only the values the Compose stack explicitly needs." />
-            ) : (
-              <div className="space-y-2">
-                {envVars.map((envVar, index) => (
-                  <div key={`${envVar.serviceName}-${envVar.key}-${index}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr]">
-                    <Input
-                      list="compose-service-names"
-                      value={envVar.serviceName}
-                      onChange={(event) => updateEnvVar(index, { serviceName: event.target.value })}
-                      placeholder="api"
-                      aria-label="Env service name"
-                    />
-                    <Input
-                      value={envVar.key}
-                      onChange={(event) => updateEnvVar(index, { key: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_") })}
-                      placeholder="DATABASE_URL"
-                      aria-label="Env key"
-                    />
-                    <Input
-                      className="sm:col-span-2"
-                      type={envVar.isSecret && !showSecrets ? "password" : "text"}
-                      value={envVar.value}
-                      onChange={(event) => updateEnvVar(index, { value: event.target.value })}
-                      placeholder={envVar.isSecret ? secretMask : "value"}
-                      aria-label="Env value"
-                    />
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                      <Checkbox checked={envVar.isSecret} onCheckedChange={(value) => updateEnvVar(index, { isSecret: Boolean(value) })} />
-                      Secret
-                    </label>
-                    <Button type="button" variant="ghost" size="sm" className="justify-self-start sm:justify-self-end" onClick={() => setEnvVars((items) => items.filter((_, itemIndex) => itemIndex !== index))}>
-                      <Trash2 className="h-4 w-4" />
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+
+
 
       <Card>
         <CardHeader>
@@ -772,15 +695,6 @@ function EmptyInline({ title, description }: { title: string; description: strin
   );
 }
 
-function InlineWarning({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
-      <AlertTriangle className="h-4 w-4 text-warning" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
 function StatusLine({ label, value, muted = false }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-3">
@@ -803,4 +717,11 @@ function findDuplicates(values: string[]) {
     else seen.add(normalized);
   });
   return Array.from(duplicates);
+}
+
+function toggleService(expandedServices: Set<string>, serviceName: string) {
+  const next = new Set(expandedServices);
+  if (next.has(serviceName)) next.delete(serviceName);
+  else next.add(serviceName);
+  return next;
 }
