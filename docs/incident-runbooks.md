@@ -11,7 +11,7 @@ dashboard or execution-node workloads.
    ```bash
    df -h
    docker system df
-   journalctl -u oneclick-execution-node -n 250 --no-pager
+   journalctl -u composeship-execution-node -n 250 --no-pager
    ```
 
 2. Do not run `docker system prune -a --volumes`.

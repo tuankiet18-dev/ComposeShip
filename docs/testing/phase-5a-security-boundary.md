@@ -6,7 +6,7 @@ Status: `PASS_LOCAL_AWS_PENETRATION_PENDING`
 
 - Execution-mode Compose routes use private published ports for control-plane
   Traefik. They no longer join a Docker network shared with other projects.
-- Cloudflare Quick Tunnel routes receive a per-project `oneclick-tunnel`
+- Cloudflare Quick Tunnel routes receive a per-project `composeship-tunnel`
   network. A tunnel attaches only to that project-owned network.
 - User Compose cannot declare external resources, custom network names,
   non-bridge network drivers, driver options, Docker/host bind mounts,

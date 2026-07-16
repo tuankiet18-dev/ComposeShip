@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ComposeShip Compose Fixture</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f7f7f8;
+        color: #171717;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      main {
+        width: min(760px, calc(100vw - 32px));
+        background: #ffffff;
+        border: 1px solid #dedee3;
+        border-radius: 8px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+
+      p {
+        color: #575761;
+        line-height: 1.55;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        background: #111827;
+        color: white;
+        padding: 10px 14px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      pre {
+        overflow: auto;
+        background: #111827;
+        color: #e5e7eb;
+        padding: 16px;
+        border-radius: 8px;
+      }
+
+      code {
+        background: #eeeeef;
+        border-radius: 4px;
+        padding: 2px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ComposeShip Compose Fixture</h1>
+      <p>
+        This page is served by the <code>frontend</code> container. The API and
+        database run as separate Compose services on the execution node.
+      </p>
+      <p>Frontend host: <code id="host"></code></p>
+      <p>Derived API base: <code id="api-base"></code></p>
+      <button id="check">Check API and database</button>
+      <pre id="result">Click the button to call /health and /db-check.</pre>
+    </main>
+
+    <script>
+      const host = window.location.host;
+      const apiHost = host.replace(/^app-/, "api-");
+      const apiBase = `${window.location.protocol}//${apiHost}`;
+
+      document.getElementById("host").textContent = host;
+      document.getElementById("api-base").textContent = apiBase;
+
+      async function getJson(path) {
+        const response = await fetch(`${apiBase}${path}`, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`${path} returned HTTP ${response.status}`);
+        }
+        return response.json();
+      }
+
+      document.getElementById("check").addEventListener("click", async () => {
+        const result = document.getElementById("result");
+        result.textContent = "Checking...";
+        try {
+          const [health, db] = await Promise.all([getJson("/health"), getJson("/db-check")]);
+          result.textContent = JSON.stringify({ health, db }, null, 2);
+        } catch (error) {
+          result.textContent = error instanceof Error ? error.message : String(error);
+        }
+      });
+    </script>
+  </body>
+</html>

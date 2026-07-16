@@ -30,11 +30,11 @@ from config import (
 logger = logging.getLogger(__name__)
 
 DYNAMIC_DIR = "/etc/traefik/dynamic"
-ONECLICK_LABEL = "com.oneclickhost.managed"
-ONECLICK_PROJECT_ID_LABEL = "com.oneclickhost.project-id"
-ONECLICK_DEPLOYMENT_ID_LABEL = "com.oneclickhost.deployment-id"
-ONECLICK_COMPOSE_PROJECT_LABEL = "com.oneclickhost.compose-project"
-ONECLICK_QUICK_TUNNEL_LABEL = "com.oneclickhost.cloudflare-quick-tunnel"
+COMPOSESHIP_LABEL = "com.composeship.managed"
+COMPOSESHIP_PROJECT_ID_LABEL = "com.composeship.project-id"
+COMPOSESHIP_DEPLOYMENT_ID_LABEL = "com.composeship.deployment-id"
+COMPOSESHIP_COMPOSE_PROJECT_LABEL = "com.composeship.compose-project"
+COMPOSESHIP_QUICK_TUNNEL_LABEL = "com.composeship.cloudflare-quick-tunnel"
 SECRET_MASK = "********"
 TRAEFIK_EXPOSURE = "traefik"
 CLOUDFLARE_QUICK_EXPOSURE = "cloudflare_quick"
@@ -209,7 +209,7 @@ def _sanitize_volumes(service_name: str, service: dict[str, Any], source_path: s
                 _resolve_under_source(source_path, source, f"volume bind in service '{service_name}'")
                 raise RuntimeError(
                     f"Local bind mount '{source}:{target}' in service '{service_name}' is not supported for deployment. "
-                    "OneClickHost removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
+                    "ComposeShip removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
                 )
         elif isinstance(volume, dict) and volume.get("type") in (None, "bind"):
             source = str(volume.get("source") or volume.get("src") or "")
@@ -220,7 +220,7 @@ def _sanitize_volumes(service_name: str, service: dict[str, Any], source_path: s
                 _resolve_under_source(source_path, source, f"volume bind in service '{service_name}'")
                 raise RuntimeError(
                     f"Local bind mount '{source}:{target}' in service '{service_name}' is not supported for deployment. "
-                    "OneClickHost removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
+                    "ComposeShip removes temporary repository files after build; use a named volume for data or a production image that contains the application code."
                 )
         sanitized.append(volume)
 
@@ -463,9 +463,9 @@ def prepare_compose_file(
                 build_args_by_service.setdefault(service_name, {})[key] = env["value"]
 
     labels = {
-        ONECLICK_LABEL: "true",
-        ONECLICK_PROJECT_ID_LABEL: project_id,
-        ONECLICK_DEPLOYMENT_ID_LABEL: deployment_id,
+        COMPOSESHIP_LABEL: "true",
+        COMPOSESHIP_PROJECT_ID_LABEL: project_id,
+        COMPOSESHIP_DEPLOYMENT_ID_LABEL: deployment_id,
     }
 
     compose.setdefault("networks", {})
@@ -476,9 +476,9 @@ def prepare_compose_file(
     # never a Docker network shared by other projects. Local single-host mode
     # retains its Traefik bridge only for development diagnostics.
     if not expose_route_ports:
-        compose["networks"]["oneclick-public"] = {"external": True, "name": TRAEFIK_NETWORK}
+        compose["networks"]["composeship-public"] = {"external": True, "name": TRAEFIK_NETWORK}
     if has_quick_tunnel_route:
-        compose["networks"]["oneclick-tunnel"] = {}
+        compose["networks"]["composeship-tunnel"] = {}
 
     for service_name, service in services.items():
         if not isinstance(service, dict):
@@ -495,7 +495,7 @@ def prepare_compose_file(
         service["labels"] = {
             **_normalize_environment(service.get("labels")),
             **labels,
-            "com.oneclickhost.compose-service": service_name,
+            "com.composeship.compose-service": service_name,
         }
         service["environment"] = {
             **_normalize_environment(service.get("environment")),
@@ -532,9 +532,9 @@ def prepare_compose_file(
                 if route["serviceName"] == service_name
             }
             if TRAEFIK_EXPOSURE in route_providers and not expose_route_ports:
-                networks["oneclick-public"] = {"aliases": [alias]}
+                networks["composeship-public"] = {"aliases": [alias]}
             if CLOUDFLARE_QUICK_EXPOSURE in route_providers:
-                networks["oneclick-tunnel"] = {"aliases": [alias]}
+                networks["composeship-tunnel"] = {"aliases": [alias]}
             service["networks"] = networks
             if expose_route_ports:
                 published_ports = [
@@ -551,7 +551,7 @@ def prepare_compose_file(
                 if published_ports:
                     service["ports"] = published_ports
 
-    output_path = os.path.join(source_path, ".oneclick.compose.yml")
+    output_path = os.path.join(source_path, ".composeship.compose.yml")
     with open(output_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(compose, f, sort_keys=False)
     return output_path, sanitize_logs
@@ -680,9 +680,9 @@ def create_cloudflare_quick_tunnels(compose_project_name: str, routes: list[dict
 
         target_url = f"http://{alias}:{port}"
         labels = {
-            ONECLICK_LABEL: "true",
-            ONECLICK_COMPOSE_PROJECT_LABEL: compose_project_name,
-            ONECLICK_QUICK_TUNNEL_LABEL: "true",
+            COMPOSESHIP_LABEL: "true",
+            COMPOSESHIP_COMPOSE_PROJECT_LABEL: compose_project_name,
+            COMPOSESHIP_QUICK_TUNNEL_LABEL: "true",
         }
         logger.info("Starting Cloudflare Quick Tunnel %s -> %s", container_name, target_url)
         try:
@@ -704,7 +704,7 @@ def create_cloudflare_quick_tunnels(compose_project_name: str, routes: list[dict
             ),
             restart_policy={"Name": "unless-stopped"},
         )
-        client.api.connect_container_to_network(container.id, f"{compose_project_name}_oneclick-tunnel")
+        client.api.connect_container_to_network(container.id, f"{compose_project_name}_composeship-tunnel")
         container.start()
         public_urls.append(_wait_for_quick_tunnel_url(container, container_name))
 
@@ -769,8 +769,8 @@ def remove_cloudflare_quick_tunnels(compose_project_name: str):
         all=True,
         filters={
             "label": [
-                f"{ONECLICK_COMPOSE_PROJECT_LABEL}={compose_project_name}",
-                f"{ONECLICK_QUICK_TUNNEL_LABEL}=true",
+                f"{COMPOSESHIP_COMPOSE_PROJECT_LABEL}={compose_project_name}",
+                f"{COMPOSESHIP_QUICK_TUNNEL_LABEL}=true",
             ]
         },
     )
@@ -972,8 +972,8 @@ def cleanup_compose_stack(compose_project_name: str, remove_volumes: bool):
         all=True,
         filters={
             "label": [
-                f"{ONECLICK_COMPOSE_PROJECT_LABEL}={compose_project_name}",
-                f"{ONECLICK_QUICK_TUNNEL_LABEL}=true",
+                f"{COMPOSESHIP_COMPOSE_PROJECT_LABEL}={compose_project_name}",
+                f"{COMPOSESHIP_QUICK_TUNNEL_LABEL}=true",
             ]
         },
     )

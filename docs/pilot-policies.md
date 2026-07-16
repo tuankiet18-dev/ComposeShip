@@ -2,7 +2,7 @@
 
 Status: `REVIEW_REQUIRED_BEFORE_RELEASE`
 
-These policies describe the OneClickHost invite-only pilot. They are a product
+These policies describe the ComposeShip invite-only pilot. They are a product
 baseline, not legal advice. The operator must have counsel review them and
 replace `ABUSE_CONTACT_EMAIL` with a monitored mailbox before issuing the
 first external invite.

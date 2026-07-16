@@ -1,4 +1,4 @@
-name: oneclick-execution
+name: composeship-execution
 
 x-logging: &default-logging
   driver: json-file
@@ -27,15 +27,15 @@ services:
       POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
       BUILD_TIMEOUT: ${WORKER_BUILD_TIMEOUT:-900}
       MAX_CONCURRENT_BUILDS: ${MAX_CONCURRENT_BUILDS:-1}
-      WORKSPACE_DIR: ${WORKSPACE_DIR:-/tmp/oneclick-workspace}
+      WORKSPACE_DIR: ${WORKSPACE_DIR:-/tmp/composeship-workspace}
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-localhost}
-      TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-oneclick-execution_user-net}
+      TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-composeship-execution_user-net}
       CLOUDFLARED_IMAGE: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared@sha256:188bb03589a32affed3cf4d0590565ffe67b78866e6b5582574afab2b705bafe}
       CONTAINER_MEMORY_LIMIT: ${CONTAINER_MEMORY_LIMIT:-256m}
       CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-0.5}
       CONTAINER_PIDS_LIMIT: ${CONTAINER_PIDS_LIMIT:-256}
       LOG_MAX_BYTES: ${LOG_MAX_BYTES:-200000}
-      ONECLICK_ENABLE_POST_START_COMMANDS: ${ONECLICK_ENABLE_POST_START_COMMANDS:-false}
+      COMPOSESHIP_ENABLE_POST_START_COMMANDS: ${COMPOSESHIP_ENABLE_POST_START_COMMANDS:-false}
       CONTAINER_LOG_MAX_SIZE: ${CONTAINER_LOG_MAX_SIZE:-10m}
       CONTAINER_LOG_MAX_FILES: ${CONTAINER_LOG_MAX_FILES:-3}
       DISK_MIN_FREE_BYTES: ${DISK_MIN_FREE_BYTES:-5368709120}
@@ -46,7 +46,7 @@ services:
       CLEANUP_BUILD_CACHE_MAX_AGE_SECONDS: ${CLEANUP_BUILD_CACHE_MAX_AGE_SECONDS:-86400}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - worker_workspace:/tmp/oneclick-workspace
+      - worker_workspace:/tmp/composeship-workspace
     networks:
       - user-net
 

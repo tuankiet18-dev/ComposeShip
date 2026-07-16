@@ -51,7 +51,7 @@ if [[ -n "$node_id" && -n "$node_token" ]]; then
   echo "Checking execution-node authenticated heartbeat endpoint..."
   curl -fsS \
     -H "Content-Type: application/json" \
-    -H "X-OneClick-Node-Token: ${node_token}" \
+    -H "X-ComposeShip-Node-Token: ${node_token}" \
     -d '{"currentBuilds":0,"status":"active"}' \
     "${api_url}/execution-nodes/${node_id}/heartbeat" >/dev/null
   echo "  ok: execution node heartbeat"

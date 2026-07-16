@@ -18,7 +18,7 @@ providers:
   # docker:
   #   endpoint: "unix:///var/run/docker.sock"
   #   exposedByDefault: false
-  #   network: oneclick_oneclick-net
+  #   network: composeship_composeship-net
   # ──────────────────────────────────────────────────────────────────────────
 
   # ── ALWAYS ACTIVE: File Provider for user-deployed containers ─────────────

@@ -29,7 +29,7 @@ runbooks, and generated validation reports.
 | [Frontend README](../frontend/README.md) | React/Vite local development |
 | [Worker README](../worker/README.md) | Worker modes, configuration, and security assumptions |
 | [AWS Two-Node README](../infra/aws/mvp/README.md) | Terraform usage for the two-node stack |
-| [Fixture README](../fixtures/oneclick-compose-fixture/README.md) | Public Compose E2E fixture |
+| [Fixture README](../fixtures/composeship-compose-fixture/README.md) | Public Compose E2E fixture |
 
 ## Generated Reports
 

@@ -22,10 +22,10 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-MANAGED_LABEL = "com.oneclickhost.managed"
-DEPLOYMENT_LABEL = "com.oneclickhost.deployment-id"
+MANAGED_LABEL = "com.composeship.managed"
+DEPLOYMENT_LABEL = "com.composeship.deployment-id"
 COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
-SERVICE_LABEL = "com.oneclickhost.service-id"
+SERVICE_LABEL = "com.composeship.service-id"
 
 
 class DiskPressureError(RuntimeError):
@@ -160,14 +160,14 @@ class PeriodicCleaner:
         removed = 0
         for image in self.client.images.list():
             tags = image.tags or []
-            oneclick_tags = [tag for tag in tags if tag.split(":", 1)[0].startswith("oc-")]
-            if not oneclick_tags or any(tag in active_image_tags for tag in oneclick_tags):
+            composeship_tags = [tag for tag in tags if tag.split(":", 1)[0].startswith("oc-")]
+            if not composeship_tags or any(tag in active_image_tags for tag in composeship_tags):
                 continue
-            if any(tag.split(":", 1)[0].startswith(f"{project}-") for project in active_projects for tag in oneclick_tags):
+            if any(tag.split(":", 1)[0].startswith(f"{project}-") for project in active_projects for tag in composeship_tags):
                 continue
             if _created_epoch(image.attrs.get("Created")) >= cutoff:
                 continue
-            for tag in oneclick_tags:
+            for tag in composeship_tags:
                 try:
                     self.client.images.remove(image=tag, force=False, noprune=False)
                     removed += 1

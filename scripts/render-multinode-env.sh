@@ -53,19 +53,19 @@ auth_cookie_secure="${AUTH_COOKIE_SECURE:-true}"
 mkdir -p "$output_dir"
 
 cat >"${output_dir}/control-plane.env" <<EOF
-# Generated control-plane env for the OneClickHost MVP.
+# Generated control-plane env for the ComposeShip MVP.
 ASPNETCORE_ENVIRONMENT=Production
-POSTGRES_DB=oneclickhost
-POSTGRES_USER=oneclick
+POSTGRES_DB=composeship
+POSTGRES_USER=composeship
 POSTGRES_PASSWORD=${control_plane_postgres_password}
-CONNECTION_STRING=Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${control_plane_postgres_password}
+CONNECTION_STRING=Host=db;Port=5432;Database=composeship;Username=composeship;Password=${control_plane_postgres_password}
 JWT_SECRET=${JWT_SECRET}
-ONECLICK_SECRET_KEY=${ONECLICK_SECRET_KEY}
+COMPOSESHIP_SECRET_KEY=${COMPOSESHIP_SECRET_KEY}
 INVITE_CODE_PEPPER=${INVITE_CODE_PEPPER}
 INVITES_REQUIRED=true
 INVITES_MAX_ACCOUNTS=10
-JWT_ISSUER=oneclick-host
-JWT_AUDIENCE=oneclick-host-client
+JWT_ISSUER=composeship
+JWT_AUDIENCE=composeship-client
 JWT_EXPIRY_HOURS=24
 CORS_ORIGINS=${admin_cors_origin}
 FORWARDED_HEADERS_TRUSTED_NETWORKS=172.16.0.0/12
@@ -88,8 +88,8 @@ EOF
 
 if [[ -n "${EXECUTION_NODE_PRIVATE_IP:-}" ]]; then
   cat >"${output_dir}/execution-node.env" <<EOF
-# Generated execution-node env for the OneClickHost MVP.
-COMPOSE_PROJECT_NAME=oneclick-execution
+# Generated execution-node env for the ComposeShip MVP.
+COMPOSE_PROJECT_NAME=composeship-execution
 WORKER_MODE=executor
 CONTROL_PLANE_API_URL=http://${control_plane_api_host}:5000/api
 EXECUTION_NODE_NAME=execution-node-1

@@ -1,5 +1,5 @@
 locals {
-  deployment_path = "/opt/oneclick-host"
+  deployment_path = "/opt/composeship"
   vpc_cidr        = "10.42.0.0/16"
   public_cidr     = "10.42.1.0/24"
   private_cidr    = "10.42.2.0/24"
@@ -7,7 +7,7 @@ locals {
 
   postgres_password                 = var.postgres_password != "" ? var.postgres_password : random_password.postgres_password.result
   jwt_secret                        = var.jwt_secret != "" ? var.jwt_secret : random_password.jwt_secret.result
-  oneclick_secret_key               = var.oneclick_secret_key != "" ? var.oneclick_secret_key : random_password.oneclick_secret_key.result
+  composeship_secret_key               = var.composeship_secret_key != "" ? var.composeship_secret_key : random_password.composeship_secret_key.result
   invite_code_pepper                = var.invite_code_pepper != "" ? var.invite_code_pepper : random_password.invite_code_pepper.result
   cloudfront_origin_secret          = random_password.cloudfront_origin_secret.result
   execution_node_registration_token = var.execution_node_registration_token != "" ? var.execution_node_registration_token : random_password.execution_node_registration_token.result
@@ -30,7 +30,7 @@ resource "random_password" "jwt_secret" {
   special = false
 }
 
-resource "random_password" "oneclick_secret_key" {
+resource "random_password" "composeship_secret_key" {
   length  = 48
   special = false
 }
@@ -315,7 +315,7 @@ resource "aws_instance" "control_plane" {
     postgres_user                     = var.postgres_user
     postgres_password                 = local.postgres_password
     jwt_secret                        = local.jwt_secret
-    oneclick_secret_key               = local.oneclick_secret_key
+    composeship_secret_key               = local.composeship_secret_key
     invite_code_pepper                = local.invite_code_pepper
     cloudfront_origin_secret          = local.cloudfront_origin_secret
     backup_bucket_name                = aws_s3_bucket.backups.bucket

@@ -233,7 +233,7 @@ def test_prepare_compose_exposes_only_routed_services_for_execution_node(tmp_pat
     assert sanitized["services"]["api"]["ports"][0]["target"] == 8000
     assert "ports" not in sanitized["services"]["db"]
     assert sanitized["services"]["api"]["environment"]["DATABASE_URL"] == "postgres://db/app"
-    assert "oneclick-public" not in sanitized["networks"]
+    assert "composeship-public" not in sanitized["networks"]
     assert sanitized["services"]["api"]["cap_drop"] == ["ALL"]
     assert sanitized["services"]["api"]["cap_add"] == ["NET_BIND_SERVICE"]
     assert sanitized["services"]["api"]["security_opt"] == ["no-new-privileges:true"]
@@ -311,8 +311,8 @@ def test_prepare_compose_does_not_publish_cloudflare_quick_route_ports(tmp_path)
     with open(sanitized_file, encoding="utf-8") as f:
         sanitized = yaml.safe_load(f)
     assert "ports" not in sanitized["services"]["api"]
-    assert "oneclick-tunnel" in sanitized["networks"]
-    assert "oneclick-tunnel" in sanitized["services"]["api"]["networks"]
+    assert "composeship-tunnel" in sanitized["networks"]
+    assert "composeship-tunnel" in sanitized["services"]["api"]["networks"]
 
 
 def test_prepare_compose_rejects_unknown_exposure_provider(tmp_path):

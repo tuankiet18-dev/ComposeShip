@@ -11,7 +11,7 @@ Status: `PASS_LOCAL_AWS_VIEWER_VERIFICATION_PENDING`
 - API requests use the same CloudFront distribution at relative `/api` paths;
   its cache policy forwards cookies and auth/CORS headers without caching
   responses.
-- CloudFront sends a generated `X-OneClick-Origin` secret to the control-plane
+- CloudFront sends a generated `X-ComposeShip-Origin` secret to the control-plane
   origin. Production Traefik routes require that header, so direct
   control-plane HTTP requests do not match dashboard/API routes.
 - The control-plane security group accepts port 80 only from AWS's managed

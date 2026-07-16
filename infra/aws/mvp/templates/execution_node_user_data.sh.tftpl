@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec > >(tee -a /var/log/oneclick-execution-node-bootstrap.log) 2>&1
+exec > >(tee -a /var/log/composeship-execution-node-bootstrap.log) 2>&1
 export DEBIAN_FRONTEND=noninteractive
 
 DEPLOYMENT_PATH="${deployment_path}"
@@ -64,7 +64,7 @@ fi
 log "Writing execution-node env"
 mkdir -p .generated/multinode
 cat > .generated/multinode/execution-node.env <<ENVEOF
-COMPOSE_PROJECT_NAME=oneclick-execution
+COMPOSE_PROJECT_NAME=composeship-execution
 WORKER_MODE=executor
 CONTROL_PLANE_API_URL=http://${control_plane_private_ip}:5000/api
 EXECUTION_NODE_NAME=execution-node-$INSTANCE_ID
@@ -87,10 +87,10 @@ ENVEOF
 chown -R ubuntu:ubuntu .generated
 chmod 0600 .generated/multinode/execution-node.env
 
-log "Installing OneClick execution-node systemd service"
-cat > /etc/systemd/system/oneclick-execution-node.service <<SERVICEEOF
+log "Installing ComposeShip execution-node systemd service"
+cat > /etc/systemd/system/composeship-execution-node.service <<SERVICEEOF
 [Unit]
-Description=OneClickHost MVP execution-node
+Description=ComposeShip MVP execution-node
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -98,8 +98,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=$DEPLOYMENT_PATH
-ExecStart=/usr/bin/docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env up -d --build
-ExecStop=/usr/bin/docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env down
+ExecStart=/usr/bin/docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env up -d --build
+ExecStop=/usr/bin/docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env down
 RemainAfterExit=yes
 TimeoutStartSec=1800
 
@@ -107,10 +107,10 @@ TimeoutStartSec=1800
 WantedBy=multi-user.target
 SERVICEEOF
 
-cat > /etc/systemd/system/oneclick-host-metrics.service <<SERVICEEOF
+cat > /etc/systemd/system/composeship-metrics.service <<SERVICEEOF
 [Unit]
-Description=OneClickHost execution-node metrics
-After=oneclick-execution-node.service
+Description=ComposeShip execution-node metrics
+After=composeship-execution-node.service
 
 [Service]
 Type=oneshot
@@ -118,9 +118,9 @@ WorkingDirectory=$DEPLOYMENT_PATH
 ExecStart=$DEPLOYMENT_PATH/scripts/report-host-metrics.sh execution-node
 SERVICEEOF
 
-cat > /etc/systemd/system/oneclick-host-metrics.timer <<TIMEROF
+cat > /etc/systemd/system/composeship-metrics.timer <<TIMEROF
 [Unit]
-Description=OneClickHost execution-node metrics timer
+Description=ComposeShip execution-node metrics timer
 
 [Timer]
 OnBootSec=2min
@@ -131,10 +131,10 @@ WantedBy=timers.target
 TIMEROF
 
 systemctl daemon-reload
-systemctl enable oneclick-execution-node.service
-systemctl enable --now oneclick-host-metrics.timer
+systemctl enable composeship-execution-node.service
+systemctl enable --now composeship-metrics.timer
 
-log "Starting OneClick execution-node"
-systemctl start oneclick-execution-node.service
+log "Starting ComposeShip execution-node"
+systemctl start composeship-execution-node.service
 
 log "Execution-node bootstrap complete"

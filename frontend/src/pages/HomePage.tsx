@@ -11,7 +11,7 @@ export function HomePage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Boxes className="h-4 w-4" />
             </div>
-            <span className="text-base font-semibold tracking-tight">OneClickHost</span>
+            <span className="text-base font-semibold tracking-tight">ComposeShip</span>
           </Link>
           <nav className="flex items-center gap-2">
             <Button variant="ghost" asChild>
@@ -35,7 +35,7 @@ export function HomePage() {
               Deploy from GitHub without the deploy anxiety.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground">
-              OneClickHost detects your stack, builds containers, handles Compose projects,
+              ComposeShip detects your stack, builds containers, handles Compose projects,
               stores secrets securely, and gives every deployment a calm operational dashboard.
             </p>
           </div>

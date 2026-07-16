@@ -27,9 +27,9 @@ def decrypt_secret(value: str | None) -> str | None:
 
 
 def _get_key() -> bytes:
-    configured_key = os.getenv("ONECLICK_SECRET_KEY") or os.getenv("JWT_SECRET")
+    configured_key = os.getenv("COMPOSESHIP_SECRET_KEY") or os.getenv("JWT_SECRET")
     if not configured_key:
-        raise RuntimeError("ONECLICK_SECRET_KEY is required to decrypt environment variables.")
+        raise RuntimeError("COMPOSESHIP_SECRET_KEY is required to decrypt environment variables.")
 
     try:
         decoded = base64.b64decode(configured_key, validate=True)

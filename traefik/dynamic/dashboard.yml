@@ -1,4 +1,4 @@
-# Dynamic routing rules for trusted OneClick-Host control-plane services.
+# Dynamic routing rules for trusted ComposeShip control-plane services.
 # Traefik reaches these services over control-net; user workloads are only
 # attached to apps-net and cannot resolve db/api/worker directly.
 

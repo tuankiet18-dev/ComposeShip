@@ -3,7 +3,7 @@
 ## Decision
 
 The MVP release target is a two-node AWS topology with invite-only access.
-OneClickHost will not run public user workloads on the control-plane host.
+ComposeShip will not run public user workloads on the control-plane host.
 
 The project does not currently own a domain. The dashboard and API therefore
 use the default CloudFront domain, while user applications use Cloudflare Quick

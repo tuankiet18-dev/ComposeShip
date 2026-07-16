@@ -1,5 +1,5 @@
 # Canonical control-plane stack for the Two-Node MVP.
-name: oneclick
+name: composeship
 
 x-logging: &default-logging
   driver: json-file
@@ -11,26 +11,26 @@ services:
   db:
     logging: *default-logging
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
-    container_name: oneclick-db
+    container_name: composeship-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-oneclickhost}
-      POSTGRES_USER: ${POSTGRES_USER:-oneclick}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oneclick_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-composeship}
+      POSTGRES_USER: ${POSTGRES_USER:-composeship}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-composeship_dev_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oneclick} -d ${POSTGRES_DB:-oneclickhost}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-composeship} -d ${POSTGRES_DB:-composeship}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - oneclick-net
+      - composeship-net
 
   traefik:
     logging: *default-logging
     image: traefik:v3.4@sha256:06ddf61ee653caf4f4211a604e657f084f4727f762c16f826c97aafbefcb279e
-    container_name: oneclick-traefik
+    container_name: composeship-traefik
     restart: unless-stopped
     command:
       - "--entrypoints.web.address=:80"
@@ -43,27 +43,27 @@ services:
     volumes:
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
     networks:
-      - oneclick-net
+      - composeship-net
 
   api:
     logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: oneclick-api
+    container_name: composeship-api
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:5000
-      ConnectionStrings__DefaultConnection: ${CONNECTION_STRING:-Host=db;Port=5432;Database=oneclickhost;Username=oneclick;Password=${POSTGRES_PASSWORD:-oneclick_dev_password}}
+      ConnectionStrings__DefaultConnection: ${CONNECTION_STRING:-Host=db;Port=5432;Database=composeship;Username=composeship;Password=${POSTGRES_PASSWORD:-composeship_dev_password}}
       Jwt__Secret: ${JWT_SECRET}
-      SecretEncryption__Key: ${ONECLICK_SECRET_KEY}
+      SecretEncryption__Key: ${COMPOSESHIP_SECRET_KEY}
       Invites__CodePepper: ${INVITE_CODE_PEPPER}
       Invites__Required: ${INVITES_REQUIRED:-true}
       Invites__MaxAccounts: ${INVITES_MAX_ACCOUNTS:-10}
       ForwardedHeaders__TrustedNetworks: ${FORWARDED_HEADERS_TRUSTED_NETWORKS:-172.16.0.0/12}
-      Jwt__Issuer: ${JWT_ISSUER:-oneclick-host}
-      Jwt__Audience: ${JWT_AUDIENCE:-oneclick-host-client}
+      Jwt__Issuer: ${JWT_ISSUER:-composeship}
+      Jwt__Audience: ${JWT_AUDIENCE:-composeship-client}
       Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-24}
       Auth__CookieSecure: ${AUTH_COOKIE_SECURE:-true}
       AI__Provider: ${AI_PROVIDER:-OpenAI}
@@ -75,47 +75,47 @@ services:
       ExecutionNodes__MaxLeaseRetries: ${EXECUTION_NODE_MAX_LEASE_RETRIES:-3}
       ExecutionNodes__RetryDelaySeconds: ${EXECUTION_NODE_RETRY_DELAY_SECONDS:-30}
       Traefik__DynamicDirectory: ${TRAEFIK_DYNAMIC_DIR:-/etc/traefik/dynamic}
-      OneClick__LogMaxBytes: ${LOG_MAX_BYTES:-200000}
-      OneClick__AutoMigrateDatabase: ${AUTO_MIGRATE_DATABASE:-false}
+      ComposeShip__LogMaxBytes: ${LOG_MAX_BYTES:-200000}
+      ComposeShip__AutoMigrateDatabase: ${AUTO_MIGRATE_DATABASE:-false}
       Capacity__MaxActiveProjects: ${MAX_ACTIVE_PROJECTS:-3}
       Capacity__MaxQueuedDeployments: ${MAX_QUEUED_DEPLOYMENTS:-10}
       Runtime__DefaultExposureProvider: cloudflare_quick
       Runtime__RequireHttpsUserRoutes: "true"
       Runtime__ComposeOnly: "true"
-      DataProtection__KeyPath: ${DATA_PROTECTION_KEY_PATH:-/var/oneclick/data-protection}
+      DataProtection__KeyPath: ${DATA_PROTECTION_KEY_PATH:-/var/composeship/data-protection}
     ports:
       - "${API_BIND:-127.0.0.1}:5000:5000"
     volumes:
       - ./traefik/dynamic:/etc/traefik/dynamic
-      - api_data_protection:/var/oneclick/data-protection
+      - api_data_protection:/var/composeship/data-protection
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - oneclick-net
+      - composeship-net
 
   worker:
     logging: *default-logging
     build:
       context: ./worker
       dockerfile: Dockerfile
-    container_name: oneclick-worker
+    container_name: composeship-worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-oneclick}:${POSTGRES_PASSWORD:-oneclick_dev_password}@db:5432/${POSTGRES_DB:-oneclickhost}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-composeship}:${POSTGRES_PASSWORD:-composeship_dev_password}@db:5432/${POSTGRES_DB:-composeship}
       POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-5}
       WORKER_MODE: dispatcher
       BUILD_TIMEOUT: ${WORKER_BUILD_TIMEOUT:-900}
       MAX_CONCURRENT_BUILDS: ${MAX_CONCURRENT_BUILDS:-1}
       LOG_MAX_BYTES: ${LOG_MAX_BYTES:-200000}
       CONTROL_PLANE_API_URL: http://api:5000/api
-      ONECLICK_SECRET_KEY: ${ONECLICK_SECRET_KEY}
-      ONECLICK_ENABLE_POST_START_COMMANDS: false
+      COMPOSESHIP_SECRET_KEY: ${COMPOSESHIP_SECRET_KEY}
+      COMPOSESHIP_ENABLE_POST_START_COMMANDS: false
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - oneclick-net
+      - composeship-net
 
   frontend:
     logging: *default-logging
@@ -124,17 +124,17 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
-    container_name: oneclick-frontend
+    container_name: composeship-frontend
     restart: unless-stopped
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
     networks:
-      - oneclick-net
+      - composeship-net
 
 volumes:
   postgres_data:
   api_data_protection:
 
 networks:
-  oneclick-net:
+  composeship-net:
     driver: bridge

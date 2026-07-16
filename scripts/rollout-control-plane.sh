@@ -38,7 +38,7 @@ fi
 ssh "${ssh_args[@]}" "ubuntu@$host" "bash -s -- '$ref'" <<'REMOTE'
 set -euo pipefail
 ref="$1"
-root=/opt/oneclick-host
+root=/opt/composeship
 env_file="$root/.generated/multinode/control-plane.env"
 compose=(docker compose -f "$root/docker-compose.control-plane.yml" --env-file "$env_file")
 

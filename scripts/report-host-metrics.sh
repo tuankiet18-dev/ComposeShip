@@ -81,7 +81,7 @@ FROM queued;')" || db_metrics="0|0|0|0"
   fi
 else
   compose_file="${COMPOSE_FILE:-$ROOT_DIR/docker-compose.execution.yml}"
-  if ! docker compose -p oneclick-execution -f "$compose_file" --env-file "$ENV_FILE" ps --status running worker | grep -q worker; then worker_healthy=0; fi
+  if ! docker compose -p composeship-execution -f "$compose_file" --env-file "$ENV_FILE" ps --status running worker | grep -q worker; then worker_healthy=0; fi
 fi
 
 metric_data="[
@@ -104,4 +104,4 @@ if [[ "${METRICS_DRY_RUN:-false}" == "true" ]]; then
   exit 0
 fi
 
-aws cloudwatch put-metric-data --region "$AWS_REGION" --namespace OneClickHost --metric-data "$metric_data" --no-cli-pager
+aws cloudwatch put-metric-data --region "$AWS_REGION" --namespace ComposeShip --metric-data "$metric_data" --no-cli-pager

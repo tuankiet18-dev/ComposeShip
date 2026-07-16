@@ -68,6 +68,6 @@ def test_create_cloudflare_quick_tunnel_targets_service_container(monkeypatch):
     created = client.containers.created[0]
     assert created["name"] == "cf-oc-portfolio-web"
     assert created["command"] == ["tunnel", "--no-autoupdate", "--url", "http://oc-portfolio-web:80"]
-    assert created["labels"][build_runner.ONECLICK_QUICK_TUNNEL_LABEL] == "true"
-    assert created["labels"][build_runner.ONECLICK_SERVICE_LABEL] == "service-1"
+    assert created["labels"][build_runner.COMPOSESHIP_QUICK_TUNNEL_LABEL] == "true"
+    assert created["labels"][build_runner.COMPOSESHIP_SERVICE_LABEL] == "service-1"
     assert client.api.connected == [("cf-oc-portfolio-web-id", build_runner.TRAEFIK_NETWORK, None)]

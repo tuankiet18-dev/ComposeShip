@@ -36,7 +36,7 @@ export function LoginPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Boxes className="h-4 w-4" />
             </div>
-            <span className="text-base font-semibold tracking-tight">OneClickHost</span>
+            <span className="text-base font-semibold tracking-tight">ComposeShip</span>
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
@@ -74,7 +74,7 @@ export function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            New to OneClickHost?{" "}
+            New to ComposeShip?{" "}
             <Link to="/register" className="font-medium text-primary hover:underline">
               Create an account
             </Link>

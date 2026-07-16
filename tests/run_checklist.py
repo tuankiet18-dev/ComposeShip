@@ -27,8 +27,8 @@ def run_docker_cmd(cmd):
 
 def create_invite():
     command = os.getenv(
-        "ONECLICK_E2E_INVITE_COMMAND",
-        "docker compose exec -T api dotnet OneClickHost.Api.dll --invite create --expires-hours 2 --note e2e-checklist",
+        "COMPOSESHIP_E2E_INVITE_COMMAND",
+        "docker compose exec -T api dotnet ComposeShip.Api.dll --invite create --expires-hours 2 --note e2e-checklist",
     )
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     output = f"{result.stdout}\n{result.stderr}"
@@ -65,7 +65,7 @@ def wait_for_api_ready(timeout=60):
 
 def main():
     print("========================================")
-    print("      ONECLICKHOST QA TEST RUNNER       ")
+    print("      COMPOSESHIP QA TEST RUNNER       ")
     print("========================================\n")
 
     if not wait_for_api_ready():
@@ -167,7 +167,7 @@ def main():
             {"serviceName": "api", "routeSlug": "api", "internalPort": 8000, "exposureProvider": EXPOSURE_PROVIDER}
         ],
         "environmentVariables": [
-            {"serviceName": "api", "key": "DATABASE_URL", "value": "postgresql://oneclick:oneclick@db:5432/oneclick_fixture", "isSecret": False}
+            {"serviceName": "api", "key": "DATABASE_URL", "value": "postgresql://composeship:composeship@db:5432/composeship_fixture", "isSecret": False}
         ]
     }
     r = requests.put(f"{API_BASE}/projects/{project_a_id}/compose-config", json=config_payload, headers=headers_a)
@@ -183,15 +183,15 @@ def main():
 
     # Check only the containers that the worker created for this project. The
     # project-id label is an ownership boundary; Compose-generated names are not.
-    project_label = f"com.oneclickhost.project-id={project_a_id}"
+    project_label = f"com.composeship.project-id={project_a_id}"
     out, err, code = run_docker_cmd(
         f"docker ps --filter label={project_label} --format '{{{{.Labels}}}}'"
     )
     print_result(
         "Docker containers are running",
         code == 0
-        and "com.oneclickhost.compose-service=frontend" in out
-        and "com.oneclickhost.compose-service=api" in out,
+        and "com.composeship.compose-service=frontend" in out
+        and "com.composeship.compose-service=api" in out,
     )
     container_ids, err, code = run_docker_cmd(
         f"docker ps --filter label={project_label} --format '{{{{.ID}}}}'"

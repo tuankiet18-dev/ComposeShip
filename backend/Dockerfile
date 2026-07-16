@@ -5,12 +5,12 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:ea8bde36c11b6e7eec2656d0e59101d446
 WORKDIR /src
 
 # Copy solution and project files first (layer caching)
-COPY OneClickHost.Api/*.csproj OneClickHost.Api/
-RUN dotnet restore OneClickHost.Api/OneClickHost.Api.csproj
+COPY ComposeShip.Api/*.csproj ComposeShip.Api/
+RUN dotnet restore ComposeShip.Api/ComposeShip.Api.csproj
 
 # Copy everything and build
 COPY . .
-WORKDIR /src/OneClickHost.Api
+WORKDIR /src/ComposeShip.Api
 RUN dotnet publish -c Release -o /app/publish
 
 # ─────────────────────────────────────
@@ -24,4 +24,4 @@ COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://+:5000
 EXPOSE 5000
 
-ENTRYPOINT ["dotnet", "OneClickHost.Api.dll"]
+ENTRYPOINT ["dotnet", "ComposeShip.Api.dll"]

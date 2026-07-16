@@ -30,7 +30,7 @@ export function AppSidebar() {
             <Boxes className="h-4 w-4" />
           </div>
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold tracking-tight">OneClickHost</span>
+            <span className="text-sm font-semibold tracking-tight">ComposeShip</span>
             <span className="text-[0.7rem] text-muted-foreground">projects / deploy / logs</span>
           </div>
         </NavLink>

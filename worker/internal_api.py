@@ -30,7 +30,7 @@ class ExecutionNodeClient:
         data = None if body is None else json.dumps(body).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
-            "X-OneClick-Node-Token": self.token,
+            "X-ComposeShip-Node-Token": self.token,
         }
         if correlation_id:
             headers["X-Correlation-ID"] = correlation_id

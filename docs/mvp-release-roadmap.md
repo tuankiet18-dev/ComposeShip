@@ -84,8 +84,8 @@ execution node.
 - Reject new builds below the hard watermark with an actionable platform error.
 - Add a periodic cleaner with a single-worker lock.
 - Delete stale workspaces only when no active DB lease references them.
-- Remove stopped/orphaned OneClick containers after DB reconciliation.
-- Remove old OneClick-built images by label, age, and active deployment references.
+- Remove stopped/orphaned ComposeShip containers after DB reconciliation.
+- Remove old ComposeShip-built images by label, age, and active deployment references.
 - Prune build cache only under pressure and with an age threshold.
 - Never run automatic `docker system prune -a --volumes`.
 - Never delete user named volumes except worker-confirmed project Delete.

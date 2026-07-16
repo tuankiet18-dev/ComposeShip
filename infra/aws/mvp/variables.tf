@@ -7,13 +7,13 @@ variable "aws_region" {
 variable "project_name" {
   description = "Name prefix used for AWS resources."
   type        = string
-  default     = "oneclick-mvp"
+  default     = "composeship-mvp"
 }
 
 variable "repository_url" {
   description = "Git repository cloned by both nodes."
   type        = string
-  default     = "https://github.com/HienMinh58/oneclick-host.git"
+  default     = "https://github.com/tuankiet18-dev/ComposeShip.git"
 }
 
 variable "repository_ref" {
@@ -91,13 +91,13 @@ variable "execution_node_root_volume_size_gb" {
 variable "postgres_db" {
   description = "PostgreSQL database name for the container database."
   type        = string
-  default     = "oneclickhost"
+  default     = "composeship"
 }
 
 variable "postgres_user" {
   description = "PostgreSQL username for the container database."
   type        = string
-  default     = "oneclick"
+  default     = "composeship"
 }
 
 variable "postgres_password" {
@@ -114,7 +114,7 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
-variable "oneclick_secret_key" {
+variable "composeship_secret_key" {
   description = "Secret encryption key for stored service environment values. Leave empty to generate one."
   type        = string
   default     = ""

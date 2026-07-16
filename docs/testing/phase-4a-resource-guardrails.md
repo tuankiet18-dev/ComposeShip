@@ -20,7 +20,7 @@ Date: 2026-07-12
   Defaults: block below `5 GiB` or `10%`; start cleanup below `20%` free.
 - A periodic cleaner uses a host lock and DB inventory to preserve active
   deployments/services while removing only old inactive workspaces, stopped
-  managed containers, old OneClick-built images, and aged build cache under
+  managed containers, old ComposeShip-built images, and aged build cache under
   disk pressure. It never enumerates or removes Docker volumes.
 - Infrastructure container logs use the same `10m x 3` rotation policy.
 
@@ -54,9 +54,9 @@ LogConfig: json-file, max-size=10m, max-file=3
 ## Re-run Commands
 
 ```bash
-$HOME/.local/bin/dotnet build backend/OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj --no-restore
-$HOME/.local/bin/dotnet run --project backend/OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj --no-restore
-docker run --rm -v "$PWD/worker:/app" -w /app oneclick-worker sh -lc \
+$HOME/.local/bin/dotnet build backend/ComposeShip.Api.Tests/ComposeShip.Api.Tests.csproj --no-restore
+$HOME/.local/bin/dotnet run --project backend/ComposeShip.Api.Tests/ComposeShip.Api.Tests.csproj --no-restore
+docker run --rm -v "$PWD/worker:/app" -w /app composeship-worker sh -lc \
   'pip install -q pytest && PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests'
 npm --prefix frontend run lint && npm --prefix frontend run build
 docker compose config -q

@@ -25,7 +25,7 @@ data "aws_iam_policy_document" "host_metrics" {
     condition {
       test     = "StringEquals"
       variable = "cloudwatch:namespace"
-      values   = ["OneClickHost"]
+      values   = ["ComposeShip"]
     }
   }
 }
@@ -45,7 +45,7 @@ resource "aws_iam_role_policy" "execution_node_metrics" {
 resource "aws_cloudwatch_metric_alarm" "control_plane_low_disk" {
   alarm_name          = "${var.project_name}-control-plane-low-disk"
   alarm_description   = "Control-plane disk free percentage is below the safe watermark."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "DiskFreePercent"
   statistic           = "Minimum"
   period              = 300
@@ -62,7 +62,7 @@ resource "aws_cloudwatch_metric_alarm" "control_plane_low_disk" {
 resource "aws_cloudwatch_metric_alarm" "execution_node_low_disk" {
   alarm_name          = "${var.project_name}-execution-node-low-disk"
   alarm_description   = "Execution node disk free percentage is below the safe watermark."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "DiskFreePercent"
   statistic           = "Minimum"
   period              = 300
@@ -79,7 +79,7 @@ resource "aws_cloudwatch_metric_alarm" "execution_node_low_disk" {
 resource "aws_cloudwatch_metric_alarm" "backup_failure" {
   alarm_name          = "${var.project_name}-backup-failure"
   alarm_description   = "A scheduled PostgreSQL backup failed."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "BackupFailure"
   statistic           = "Maximum"
   period              = 86400
@@ -96,7 +96,7 @@ resource "aws_cloudwatch_metric_alarm" "backup_failure" {
 resource "aws_cloudwatch_metric_alarm" "execution_node_offline" {
   alarm_name          = "${var.project_name}-execution-node-offline"
   alarm_description   = "No active execution node is available to process Compose deployments."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "OfflineExecutionNodes"
   statistic           = "Maximum"
   period              = 300
@@ -113,7 +113,7 @@ resource "aws_cloudwatch_metric_alarm" "execution_node_offline" {
 resource "aws_cloudwatch_metric_alarm" "queue_age" {
   alarm_name          = "${var.project_name}-queue-age"
   alarm_description   = "A deployment has remained queued for more than ten minutes."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "QueueAgeSeconds"
   statistic           = "Maximum"
   period              = 300
@@ -130,7 +130,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
 resource "aws_cloudwatch_metric_alarm" "cleanup_failures" {
   alarm_name          = "${var.project_name}-cleanup-failures"
   alarm_description   = "One or more projects require administrator cleanup recovery."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "CleanupFailures"
   statistic           = "Maximum"
   period              = 300
@@ -147,7 +147,7 @@ resource "aws_cloudwatch_metric_alarm" "cleanup_failures" {
 resource "aws_cloudwatch_metric_alarm" "deployment_failure_rate" {
   alarm_name          = "${var.project_name}-deployment-failures"
   alarm_description   = "Three or more deployments failed during the most recent fifteen-minute window."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "RecentDeploymentFailures"
   statistic           = "Maximum"
   period              = 300
@@ -164,7 +164,7 @@ resource "aws_cloudwatch_metric_alarm" "deployment_failure_rate" {
 resource "aws_cloudwatch_metric_alarm" "execution_node_restarts" {
   alarm_name          = "${var.project_name}-execution-node-restarts"
   alarm_description   = "Three or more execution-node containers are restarting."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "RestartingContainers"
   statistic           = "Maximum"
   period              = 300
@@ -181,7 +181,7 @@ resource "aws_cloudwatch_metric_alarm" "execution_node_restarts" {
 resource "aws_cloudwatch_metric_alarm" "control_plane_api_unhealthy" {
   alarm_name          = "${var.project_name}-control-plane-api-unhealthy"
   alarm_description   = "The control-plane API health endpoint is unavailable."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "ApiHealthy"
   statistic           = "Minimum"
   period              = 300
@@ -198,7 +198,7 @@ resource "aws_cloudwatch_metric_alarm" "control_plane_api_unhealthy" {
 resource "aws_cloudwatch_metric_alarm" "control_plane_database_unhealthy" {
   alarm_name          = "${var.project_name}-control-plane-database-unhealthy"
   alarm_description   = "The control-plane PostgreSQL health check is unavailable."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "DatabaseHealthy"
   statistic           = "Minimum"
   period              = 300
@@ -215,7 +215,7 @@ resource "aws_cloudwatch_metric_alarm" "control_plane_database_unhealthy" {
 resource "aws_cloudwatch_metric_alarm" "execution_node_worker_unhealthy" {
   alarm_name          = "${var.project_name}-execution-node-worker-unhealthy"
   alarm_description   = "The execution-node worker is not running."
-  namespace           = "OneClickHost"
+  namespace           = "ComposeShip"
   metric_name         = "WorkerHealthy"
   statistic           = "Minimum"
   period              = 300

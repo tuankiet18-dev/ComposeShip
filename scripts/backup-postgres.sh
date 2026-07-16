@@ -23,14 +23,14 @@ set +a
 report_failure() {
   local status="$1"
   if [[ "$status" -ne 0 ]]; then
-    aws cloudwatch put-metric-data --region "$AWS_REGION" --namespace OneClickHost --metric-data \
+    aws cloudwatch put-metric-data --region "$AWS_REGION" --namespace ComposeShip --metric-data \
       "MetricName=BackupFailure,Value=1,Dimensions=Role=control-plane" --no-cli-pager >/dev/null 2>&1 || true
   fi
 }
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 object_key="postgres/${POSTGRES_DB}-${timestamp}.dump"
-tmp_file="$(mktemp "${TMPDIR:-/tmp}/oneclick-postgres-${timestamp}.XXXXXX.dump")"
+tmp_file="$(mktemp "${TMPDIR:-/tmp}/composeship-postgres-${timestamp}.XXXXXX.dump")"
 trap 'status=$?; report_failure "$status"; rm -f "$tmp_file"; exit "$status"' EXIT
 
 cd "$ROOT_DIR"

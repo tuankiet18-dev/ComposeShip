@@ -3,7 +3,7 @@ PYTHON ?= python3
 .PHONY: validate pull-base-images generate-execution-secrets render-multinode-env smoke-compose-multinode fixture-config terraform-validate
 
 validate:
-	dotnet build backend/OneClickHost.Api/OneClickHost.Api.csproj
+	dotnet build backend/ComposeShip.Api/ComposeShip.Api.csproj
 	$(PYTHON) -m pytest worker/tests
 	cd frontend && npm run lint
 	cd frontend && npm run build
@@ -21,7 +21,7 @@ pull-base-images:
 	docker pull traefik:v3.4@sha256:06ddf61ee653caf4f4211a604e657f084f4727f762c16f826c97aafbefcb279e
 
 fixture-config:
-	cd fixtures/oneclick-compose-fixture && docker compose config -q
+	cd fixtures/composeship-compose-fixture && docker compose config -q
 
 generate-execution-secrets:
 	./scripts/generate-execution-secrets.sh

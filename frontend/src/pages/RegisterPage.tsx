@@ -40,7 +40,7 @@ export function RegisterPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Boxes className="h-4 w-4" />
             </div>
-            <span className="text-base font-semibold tracking-tight">OneClickHost</span>
+            <span className="text-base font-semibold tracking-tight">ComposeShip</span>
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>

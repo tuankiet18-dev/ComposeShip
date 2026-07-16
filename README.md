@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/readme/logo_v3.png" alt="OneClick-Host Logo" width="200"/>
+  <img src="assets/readme/logo_v3.png" alt="ComposeShip Logo" width="200"/>
 </p>
 
-# OneClick-Host 🚀
+# ComposeShip 🚀
 
 <p align="center">
   <strong>A Premium Self-Hosted Platform as a Service (PaaS)</strong><br />
@@ -11,7 +11,7 @@
 
 ---
 
-OneClick-Host is a sophisticated, self-hosted deployment platform engineered for researchers, students, and small project teams. It serves as your private cloud infrastructure—similar to Vercel or Heroku—but entirely under your control. Simply provide a GitHub repository, and the platform handles the rest: stack detection, automated containerization, and live deployment with dynamic routing.
+ComposeShip is a sophisticated, self-hosted deployment platform engineered for researchers, students, and small project teams. It serves as your private cloud infrastructure—similar to Vercel or Heroku—but entirely under your control. Simply provide a GitHub repository, and the platform handles the rest: stack detection, automated containerization, and live deployment with dynamic routing.
 
 ## Product Screenshots
 
@@ -60,7 +60,7 @@ The platform leverages a robust microservices architecture orchestrated via Dock
 2. **Queuing:** ASP.NET API validates the request and queues a `Pending` job in PostgreSQL.
 3. **Detection:** The Python Worker clones the repo and executes `stack_detector.py`.
 4. **Generation:** If no `Dockerfile` exists, `dockerfile_generator.py` injects a custom-tailored template.
-5. **Execution:** `build_runner.py` builds the image and deploys the container to the internal `oneclick-net`.
+5. **Execution:** `build_runner.py` builds the image and deploys the container to the internal `composeship-net`.
 6. **Routing:** A YAML routing configuration is generated for Traefik, enabling instant global access.
 
 When a deployment fails, the worker stores a diagnostic snapshot before cleanup. The snapshot includes the failed step, detected stack when available, a bounded log excerpt, a compact repository tree, and selected relevant files. The dashboard can then request a stored one-shot AI diagnosis without re-cloning the repository or re-running the deployment.
@@ -73,13 +73,13 @@ Quick Tunnel mode does not require a Cloudflare account, token, or domain. It is
 
 ## 💻 Supported Ecosystems
 
-OneClick-Host provides first-class support for the following stacks out of the box:
+ComposeShip provides first-class support for the following stacks out of the box:
 
 - **Frontend:** React (Vite/CRA), Next.js
 - **Backend:** ASP.NET Core (.NET 10), Java Spring Boot (Maven/Gradle)
 
 > [!TIP]
-> Have a custom environment? Just include your own `Dockerfile` in the root of your repository, and OneClick-Host will prioritize it!
+> Have a custom environment? Just include your own `Dockerfile` in the root of your repository, and ComposeShip will prioritize it!
 
 ## 🚀 Getting Started
 
@@ -91,8 +91,8 @@ OneClick-Host provides first-class support for the following stacks out of the b
 
 1. **Clone the Repo:**
    ```bash
-   git clone https://github.com/HienMinh58/oneclick-host.git
-   cd oneclick-host
+   git clone https://github.com/tuankiet18-dev/ComposeShip.git
+   cd composeship
    ```
 
 2. **Create Environment File:**
@@ -131,7 +131,7 @@ docker compose up -d --force-recreate api
 To verify the API container has the key without printing it:
 
 ```bash
-docker exec oneclick-api sh -lc 'test -n "$AI__ApiKey" && echo configured || echo missing'
+docker exec composeship-api sh -lc 'test -n "$AI__ApiKey" && echo configured || echo missing'
 ```
 
 Never put real API keys in `.env.example`; keep secrets only in `.env` or your deployment secret manager.
@@ -169,7 +169,7 @@ https://github.com/tuankiet18-dev/oneclick-compose-fixture
 ```
 
 The same fixture contents are also kept locally under
-`fixtures/oneclick-compose-fixture` for review and manual push.
+`fixtures/composeship-compose-fixture` for review and manual push.
 
 For the lowest-cost AWS production pilot in Singapore, use
 `infra/aws/mvp`. It creates one public control-plane EC2 instance,

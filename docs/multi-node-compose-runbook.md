@@ -5,7 +5,7 @@
 > and Cloudflare Quick Tunnel HTTPS for displayed user routes. Track that work in
 > `mvp-release-roadmap.md`; do not interpret this runbook as release approval.
 
-Runbook này mô tả phase đầu để OneClickHost chạy Compose deploy trên hai VM
+Runbook này mô tả phase đầu để ComposeShip chạy Compose deploy trên hai VM
 cùng VPC/private network. App route của người dùng dùng HTTP qua `sslip.io`.
 HTTPS/ACME và Cloudflare Tunnel để phase sau.
 
@@ -17,7 +17,7 @@ Fixture repo:
 https://github.com/tuankiet18-dev/oneclick-compose-fixture
 ```
 
-Cấu hình trong OneClickHost:
+Cấu hình trong ComposeShip:
 
 | Field | Value |
 |---|---|
@@ -25,7 +25,7 @@ Cấu hình trong OneClickHost:
 | Compose file | `docker-compose.yml` |
 | Route `app` | service `frontend`, port `3000` |
 | Route `api` | service `api`, port `8000` |
-| Env `api.DATABASE_URL` | `postgresql://oneclick:oneclick@db:5432/oneclick_fixture` |
+| Env `api.DATABASE_URL` | `postgresql://composeship:composeship@db:5432/composeship_fixture` |
 
 Kỳ vọng:
 
@@ -64,7 +64,7 @@ máy:
 
 ```bash
 docker compose -f docker-compose.control-plane.yml --env-file .generated/multinode/control-plane.env up -d --build
-docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env up -d --build
+docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env up -d --build
 ```
 
 Nếu chạy trên Docker Desktop, có thể đặt:
@@ -91,12 +91,12 @@ registration, heartbeat, lease, build Compose, route target và cleanup.
 Khi kiểm tra execution-node, luôn dùng cùng project name:
 
 ```bash
-docker compose -p oneclick-execution -f docker-compose.execution.yml ps
-docker compose -p oneclick-execution -f docker-compose.execution.yml logs -f worker
+docker compose -p composeship-execution -f docker-compose.execution.yml ps
+docker compose -p composeship-execution -f docker-compose.execution.yml logs -f worker
 ```
 
-Repo local có thể có `.env` với `COMPOSE_PROJECT_NAME=oneclick`; nếu bỏ `-p
-oneclick-execution`, Docker Compose sẽ nhìn nhầm sang control-plane project.
+Repo local có thể có `.env` với `COMPOSE_PROJECT_NAME=composeship`; nếu bỏ `-p
+composeship-execution`, Docker Compose sẽ nhìn nhầm sang control-plane project.
 
 ## 4. Control-Plane VM
 
@@ -152,7 +152,7 @@ docker compose -f docker-compose.execution.yml up -d --build
 
 ## 6. Deploy Fixture Qua UI
 
-Trong dashboard OneClickHost:
+Trong dashboard ComposeShip:
 
 1. Tạo project.
 2. Mở tab Compose.

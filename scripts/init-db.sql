@@ -1,5 +1,5 @@
 -- =======================================
--- OneClick-Host Database Initialization
+-- ComposeShip Database Initialization
 -- =======================================
 -- This script is a safety net / reference.
 -- EF Core migrations handle schema creation in production.

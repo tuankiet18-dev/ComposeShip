@@ -1,5 +1,5 @@
 """
-OneClick-Host Worker — Main Entry Point
+ComposeShip Worker — Main Entry Point
 
 Polls the database for queued deployments and processes them sequentially.
 Pipeline: Clone → Detect Stack → Generate Dockerfile → Build → Deploy
@@ -343,7 +343,7 @@ def process_deployment(conn, deployment: dict):
     project_name = deployment["ProjectName"]
     version = deployment["Version"]
 
-    image_tag = f"oneclick-{project_name}-{service_name}:v{version}".lower().replace(" ", "-")
+    image_tag = f"composeship-{project_name}-{service_name}:v{version}".lower().replace(" ", "-")
     container_name = f"oc-{project_name}-{service_name}".lower().replace(" ", "-")
 
     all_logs = []
@@ -680,7 +680,7 @@ def process_stopping_services(conn):
 
 def run_singlehost_loop():
     """Legacy local/dev polling loop that reads jobs directly from PostgreSQL."""
-    logger.info("OneClick-Host Worker started in singlehost-dev mode")
+    logger.info("ComposeShip Worker started in singlehost-dev mode")
     logger.info(f"   Poll interval: {POLL_INTERVAL}s")
 
     while True:
@@ -729,7 +729,7 @@ def run_singlehost_loop():
 
 def run_executor_loop():
     """Production execution-node loop. Jobs are leased through the control-plane API."""
-    logger.info("OneClick-Host Worker started in executor mode")
+    logger.info("ComposeShip Worker started in executor mode")
     client = ExecutionNodeClient()
     client.ensure_registered()
 

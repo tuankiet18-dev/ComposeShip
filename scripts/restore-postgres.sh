@@ -25,7 +25,7 @@ set +a
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 
-tmp_file="$(mktemp "${TMPDIR:-/tmp}/oneclick-postgres-restore.XXXXXX.dump")"
+tmp_file="$(mktemp "${TMPDIR:-/tmp}/composeship-postgres-restore.XXXXXX.dump")"
 trap 'rm -f "$tmp_file"' EXIT
 
 aws s3 cp "s3://${BACKUP_BUCKET}/${object_key}" "$tmp_file" --region "$AWS_REGION" --only-show-errors

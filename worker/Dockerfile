@@ -26,6 +26,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create workspace directory
-RUN mkdir -p /tmp/oneclick-workspace
+RUN mkdir -p /tmp/composeship-workspace
 
 CMD ["python", "main.py"]

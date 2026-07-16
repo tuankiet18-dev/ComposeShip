@@ -25,11 +25,11 @@ _client = None
 DYNAMIC_DIR = "/etc/traefik/dynamic"
 STARTUP_STABILITY_SECONDS = 30
 PUBLIC_BUILD_ENV_PREFIXES = ("NEXT_PUBLIC_", "VITE_", "REACT_APP_")
-ONECLICK_LABEL = "com.oneclickhost.managed"
-ONECLICK_SERVICE_LABEL = "com.oneclickhost.service-id"
-ONECLICK_PROJECT_LABEL = "com.oneclickhost.project-name"
-ONECLICK_SERVICE_NAME_LABEL = "com.oneclickhost.service-name"
-ONECLICK_QUICK_TUNNEL_LABEL = "com.oneclickhost.cloudflare-quick-tunnel"
+COMPOSESHIP_LABEL = "com.composeship.managed"
+COMPOSESHIP_SERVICE_LABEL = "com.composeship.service-id"
+COMPOSESHIP_PROJECT_LABEL = "com.composeship.project-name"
+COMPOSESHIP_SERVICE_NAME_LABEL = "com.composeship.service-name"
+COMPOSESHIP_QUICK_TUNNEL_LABEL = "com.composeship.cloudflare-quick-tunnel"
 TRAEFIK_EXPOSURE = "traefik"
 CLOUDFLARE_QUICK_EXPOSURE = "cloudflare_quick"
 CLOUDFLARE_QUICK_URL_RE = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com", re.IGNORECASE)
@@ -54,19 +54,19 @@ def get_client():
     return _client
 
 
-def _oneclick_labels(
+def _composeship_labels(
     project_name: str | None = None,
     service_name: str | None = None,
     service_id: str | None = None,
 ) -> dict[str, str]:
-    """Labels used to identify Docker resources owned by OneClickHost."""
-    labels = {ONECLICK_LABEL: "true"}
+    """Labels used to identify Docker resources owned by ComposeShip."""
+    labels = {COMPOSESHIP_LABEL: "true"}
     if project_name:
-        labels[ONECLICK_PROJECT_LABEL] = project_name
+        labels[COMPOSESHIP_PROJECT_LABEL] = project_name
     if service_name:
-        labels[ONECLICK_SERVICE_NAME_LABEL] = service_name
+        labels[COMPOSESHIP_SERVICE_NAME_LABEL] = service_name
     if service_id:
-        labels[ONECLICK_SERVICE_LABEL] = service_id
+        labels[COMPOSESHIP_SERVICE_LABEL] = service_id
     return labels
 
 
@@ -128,7 +128,7 @@ def build_image(
             tag=image_tag,
             rm=True,
             forcerm=True,
-            labels=_oneclick_labels(project_name, service_name, service_id),
+            labels=_composeship_labels(project_name, service_name, service_id),
         )
 
         for chunk in build_logs:
@@ -194,8 +194,8 @@ def _remove_cloudflare_quick_tunnel(container_name: str, service_id: str | None 
             all=True,
             filters={
                 "label": [
-                    f"{ONECLICK_SERVICE_LABEL}={service_id}",
-                    f"{ONECLICK_QUICK_TUNNEL_LABEL}=true",
+                    f"{COMPOSESHIP_SERVICE_LABEL}={service_id}",
+                    f"{COMPOSESHIP_QUICK_TUNNEL_LABEL}=true",
                 ]
             },
         ):
@@ -248,8 +248,8 @@ def _create_cloudflare_quick_tunnel(
 
     target_url = f"http://{container_name}:{port}"
     labels = {
-        **_oneclick_labels(project_name, service_name, service_id),
-        ONECLICK_QUICK_TUNNEL_LABEL: "true",
+        **_composeship_labels(project_name, service_name, service_id),
+        COMPOSESHIP_QUICK_TUNNEL_LABEL: "true",
     }
     logger.info("Starting Cloudflare Quick Tunnel %s -> %s", tunnel_name, target_url)
     try:
@@ -328,7 +328,7 @@ def _run_container_command(container, container_name: str, command: str, descrip
 def _run_post_start_hooks(container, container_name: str, environment: dict[str, str] | None = None):
     """Run common in-container deploy hooks such as Alembic migrations and user commands."""
     try:
-        if (environment or {}).get("ONECLICK_SKIP_AUTO_MIGRATE", "").lower() not in {"1", "true", "yes"}:
+        if (environment or {}).get("COMPOSESHIP_SKIP_AUTO_MIGRATE", "").lower() not in {"1", "true", "yes"}:
             _run_container_command(
                 container,
                 container_name,
@@ -336,7 +336,7 @@ def _run_post_start_hooks(container, container_name: str, environment: dict[str,
                 "Post-start migration hook",
             )
 
-        post_start_commands = (environment or {}).get("ONECLICK_POST_START_COMMANDS", "")
+        post_start_commands = (environment or {}).get("COMPOSESHIP_POST_START_COMMANDS", "")
         if post_start_commands and not ENABLE_POST_START_COMMANDS:
             raise RuntimeError("Post-start commands are disabled on this worker.")
 
@@ -461,7 +461,7 @@ def run_container(
     network_aliases: Additional hostnames this container can be reached by inside
     the Traefik Docker network. Example: ["smartinvoice-backend"] allows an FE
     nginx.conf to proxy_pass to "smartinvoice-backend" even though the actual
-    container name assigned by OneClickHost is "oc-smartinvoice-shield-be".
+    container name assigned by ComposeShip is "oc-smartinvoice-shield-be".
 
     Returns:
         (container_id, live_url)
@@ -482,7 +482,7 @@ def run_container(
     # NOTE: Docker labels only work when Docker provider is enabled in traefik.yml.
     # On Windows Docker Desktop (Docker provider disabled), these are ignored.
     # The File Provider fallback block below handles routing for Windows dev.
-    labels = _oneclick_labels(project_name, service_name, service_id)
+    labels = _composeship_labels(project_name, service_name, service_id)
     if provider == TRAEFIK_EXPOSURE:
         labels = {
             **labels,
@@ -501,7 +501,7 @@ def run_container(
     # Use create() + connect_container_to_network() + start() instead of run().
     # containers.run() doesn't expose the aliases parameter in networking_config.
     # Aliases let sibling services reach this container by custom hostnames
-    # without knowing OneClickHost's internal naming convention (oc-project-service).
+    # without knowing ComposeShip's internal naming convention (oc-project-service).
     container = client.containers.create(
         image=image_tag,
         name=container_name,
@@ -640,7 +640,7 @@ def run_postgres_container(
 
     all_aliases = [container_name] + (network_aliases or [])
     volume_name = f"{container_name}-data"
-    labels = _oneclick_labels(project_name, service_name, service_id)
+    labels = _composeship_labels(project_name, service_name, service_id)
     _ensure_named_volume(volume_name, labels)
 
     logger.info(f"Running PostgreSQL container: {container_name}")
@@ -695,7 +695,7 @@ def run_redis_container(
 
     all_aliases = [container_name] + (network_aliases or [])
     volume_name = f"{container_name}-data"
-    labels = _oneclick_labels(project_name, service_name, service_id)
+    labels = _composeship_labels(project_name, service_name, service_id)
     _ensure_named_volume(volume_name, labels)
 
     logger.info(f"Running Redis container: {container_name}")
@@ -740,12 +740,12 @@ def cleanup_container(container_name: str, service_id: str | None = None):
     stop_previous_container(container_name, service_id)
 
 
-def _is_safe_oneclick_image(image, image_tag: str) -> bool:
-    """Only delete images that clearly belong to OneClickHost."""
+def _is_safe_composeship_image(image, image_tag: str) -> bool:
+    """Only delete images that clearly belong to ComposeShip."""
     labels = (image.attrs.get("Config") or {}).get("Labels") or {}
-    if labels.get(ONECLICK_LABEL) == "true":
+    if labels.get(COMPOSESHIP_LABEL) == "true":
         return True
-    return image_tag.startswith("oneclick-")
+    return image_tag.startswith("composeship-")
 
 
 def cleanup_service_artifacts(
@@ -758,14 +758,14 @@ def cleanup_service_artifacts(
 
     Containers and Traefik routes are always removed. Named data volumes are
     removed only for this service. Images are removed only when they are
-    OneClickHost-built images, avoiding shared base images like postgres/redis.
+    ComposeShip-built images, avoiding shared base images like postgres/redis.
     """
     client = get_client()
     cleanup_container(container_name, service_id)
 
     volume_names = {f"{container_name}-data"}
     if service_id:
-        for volume in client.volumes.list(filters={"label": f"{ONECLICK_SERVICE_LABEL}={service_id}"}):
+        for volume in client.volumes.list(filters={"label": f"{COMPOSESHIP_SERVICE_LABEL}={service_id}"}):
             volume_names.add(volume.name)
 
     for volume_name in sorted(volume_names):
@@ -783,8 +783,8 @@ def cleanup_service_artifacts(
             continue
         try:
             image = client.images.get(image_tag)
-            if not _is_safe_oneclick_image(image, image_tag):
-                logger.info("Skipping shared/non-OneClickHost image cleanup: %s", image_tag)
+            if not _is_safe_composeship_image(image, image_tag):
+                logger.info("Skipping shared/non-ComposeShip image cleanup: %s", image_tag)
                 continue
             client.images.remove(image=image_tag, force=True, noprune=False)
             logger.info("Removed Docker image: %s", image_tag)

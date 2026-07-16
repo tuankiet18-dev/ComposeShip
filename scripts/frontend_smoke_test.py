@@ -142,7 +142,7 @@ def run():
         page.route("**/api/**", mock_api)
 
         checks = [
-            ("/", "OneClickHost"),
+            ("/", "ComposeShip"),
             ("/login", "Welcome back"),
             ("/register", "Create your account"),
             ("/dashboard", "Welcome back, Test"),

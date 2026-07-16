@@ -33,7 +33,7 @@ resource "aws_s3_bucket_ownership_controls" "frontend" {
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "${var.project_name}-frontend-oac"
-  description                       = "CloudFront access to the OneClick-Host dashboard bucket"
+  description                       = "CloudFront access to the ComposeShip dashboard bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -129,7 +129,7 @@ resource "aws_cloudfront_response_headers_policy" "security" {
 
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
-  comment             = "OneClick-Host dashboard and API edge"
+  comment             = "ComposeShip dashboard and API edge"
   default_root_object = "index.html"
   price_class         = var.cloudfront_price_class
   wait_for_deployment = false
@@ -152,7 +152,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
 
     custom_header {
-      name  = "X-OneClick-Origin"
+      name  = "X-ComposeShip-Origin"
       value = local.cloudfront_origin_secret
     }
   }

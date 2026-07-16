@@ -1,6 +1,6 @@
-# OneClickHost Frontend
+# ComposeShip Frontend
 
-React + Vite + Tailwind frontend for OneClickHost.
+React + Vite + Tailwind frontend for ComposeShip.
 
 ```bash
 npm install

@@ -1,6 +1,6 @@
 # Local Multi-Node Compose Deploy On Windows
 
-Tài liệu này hướng dẫn chạy giả lập OneClickHost multi-node trên Windows bằng
+Tài liệu này hướng dẫn chạy giả lập ComposeShip multi-node trên Windows bằng
 Docker Desktop. Mục tiêu là kiểm tra control-plane, execution-node, register,
 heartbeat, lease job, build Compose, route target và Traefik HTTP route trước khi
 đưa lên hai VM cùng VPC/private network.
@@ -33,7 +33,7 @@ lớn logic ứng dụng.
 - PowerShell mở tại root repo:
 
 ```powershell
-cd D:\Documents\code\CSharp\OneClickHost\oneClick-
+cd D:\Documents\code\CSharp\ComposeShip
 ```
 
 Nếu Docker Hub bị lỗi `EOF` khi pull image, pre-pull trước:
@@ -61,14 +61,14 @@ Dừng hai compose project cũ:
 
 ```powershell
 docker compose down
-docker compose -p oneclick-execution -f docker-compose.execution.yml down
+docker compose -p composeship-execution -f docker-compose.execution.yml down
 ```
 
 Nếu muốn reset cả database local:
 
 ```powershell
 docker compose down -v
-docker compose -p oneclick-execution -f docker-compose.execution.yml down -v
+docker compose -p composeship-execution -f docker-compose.execution.yml down -v
 ```
 
 `down -v` sẽ xóa DB local. Nếu không reset volume, dùng password đang có trong
@@ -97,7 +97,7 @@ API_BIND=127.0.0.1
 AUTO_MIGRATE_DATABASE=true
 AUTH_COOKIE_SECURE=false
 CONTROL_PLANE_API_URL=http://host.docker.internal:5000/api
-COMPOSE_PROJECT_NAME=oneclick-execution
+COMPOSE_PROJECT_NAME=composeship-execution
 ```
 
 ## Start Control-Plane
@@ -115,11 +115,11 @@ docker compose -f docker-compose.control-plane.yml --env-file .generated\multino
 Kỳ vọng:
 
 ```text
-oneclick-db         Up (healthy)
-oneclick-api        Up
-oneclick-frontend   Up
-oneclick-traefik    Up
-oneclick-worker     Up
+composeship-db         Up (healthy)
+composeship-api        Up
+composeship-frontend   Up
+composeship-traefik    Up
+composeship-worker     Up
 ```
 
 Kiểm tra HTTP:
@@ -133,35 +133,35 @@ Cả hai trả HTTP `200`.
 
 ## Start Execution-Node
 
-Luôn dùng `-p oneclick-execution` để không bị `.env` local override
-`COMPOSE_PROJECT_NAME=oneclick`.
+Luôn dùng `-p composeship-execution` để không bị `.env` local override
+`COMPOSE_PROJECT_NAME=composeship`.
 
 ```powershell
-docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env up -d --build
+docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env up -d --build
 ```
 
 Kiểm tra:
 
 ```powershell
-docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env ps
+docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env ps
 ```
 
 Kỳ vọng:
 
 ```text
-oneclick-execution-worker-1   worker   Up
+composeship-execution-worker-1   worker   Up
 ```
 
 Xem log:
 
 ```powershell
-docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env logs -f worker
+docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated\multinode\execution-node.env logs -f worker
 ```
 
 Kỳ vọng:
 
 ```text
-OneClick-Host Worker started in executor mode
+ComposeShip Worker started in executor mode
 Registered execution node execution-node-1 (...)
 ```
 
@@ -197,7 +197,7 @@ api -> api:8000
 Env kỳ vọng:
 
 ```text
-api.DATABASE_URL=postgresql://oneclick:oneclick@db:5432/oneclick_fixture
+api.DATABASE_URL=postgresql://composeship:composeship@db:5432/composeship_fixture
 ```
 
 Khi deploy thành công, UI hiển thị execution node, route targets và public URL.
@@ -224,7 +224,7 @@ Kỳ vọng:
 ## Troubleshooting
 
 Nếu execution-node hiện control-plane services khi chạy `ps`, bạn đang thiếu
-`-p oneclick-execution`.
+`-p composeship-execution`.
 
 Nếu execution-node restart với `relation "ExecutionNodes" does not exist`, đảm
 bảo env có:
@@ -239,7 +239,7 @@ Sau đó rebuild API:
 docker compose --env-file .generated\multinode\control-plane.env up -d --build api worker
 ```
 
-Nếu API log báo `password authentication failed for user "oneclick"`, volume DB
+Nếu API log báo `password authentication failed for user "composeship"`, volume DB
 đang dùng password cũ. Render lại env với:
 
 ```text
@@ -255,5 +255,5 @@ Prerequisites.
 
 ```powershell
 docker compose down
-docker compose -p oneclick-execution -f docker-compose.execution.yml down
+docker compose -p composeship-execution -f docker-compose.execution.yml down
 ```

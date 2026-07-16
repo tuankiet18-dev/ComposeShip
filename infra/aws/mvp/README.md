@@ -1,4 +1,4 @@
-# OneClickHost AWS Two-Node MVP
+# ComposeShip AWS Two-Node MVP
 
 > **Approved topology, pre-release implementation:** the two-node boundary is
 > the selected MVP direction. The dashboard/API are CloudFront HTTPS surfaces;
@@ -119,11 +119,11 @@ terraform output execution_node_ssh_command
 Check services:
 
 ```bash
-sudo journalctl -u oneclick-control-plane -n 200 --no-pager
-sudo journalctl -u oneclick-execution-node -n 200 --no-pager
-cd /opt/oneclick-host
+sudo journalctl -u composeship-control-plane -n 200 --no-pager
+sudo journalctl -u composeship-execution-node -n 200 --no-pager
+cd /opt/composeship
 sudo docker compose -f docker-compose.control-plane.yml --env-file .generated/multinode/control-plane.env ps
-sudo docker compose -p oneclick-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env ps
+sudo docker compose -p composeship-execution -f docker-compose.execution.yml --env-file .generated/multinode/execution-node.env ps
 ```
 
 ## Acceptance Test
@@ -144,7 +144,7 @@ Expected config:
 Expected env:
 
 ```text
-api.DATABASE_URL=postgresql://oneclick:oneclick@db:5432/oneclick_fixture
+api.DATABASE_URL=postgresql://composeship:composeship@db:5432/composeship_fixture
 ```
 
 The pilot displays HTTPS Quick Tunnel URLs for configured public routes. They

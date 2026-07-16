@@ -13,7 +13,7 @@ export function PilotPolicyPage() {
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Boxes className="h-4 w-4" />
             </span>
-            OneClickHost
+            ComposeShip
           </Link>
           <Button variant="outline" size="sm" asChild>
             <Link to="/register"><ArrowLeft className="h-4 w-4" /> Back to registration</Link>
