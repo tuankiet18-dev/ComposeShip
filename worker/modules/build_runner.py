@@ -4,13 +4,18 @@ import time
 import re
 import docker
 from docker.errors import NotFound, BuildError, APIError
+from docker.types import LogConfig
 
 from config import (
     TRAEFIK_DOMAIN,
     TRAEFIK_NETWORK,
     CONTAINER_MEMORY_LIMIT,
     CONTAINER_CPU_LIMIT,
+    CONTAINER_LOG_MAX_FILES,
+    CONTAINER_LOG_MAX_SIZE,
     ENABLE_POST_START_COMMANDS,
+    CONTAINER_PIDS_LIMIT,
+    CLOUDFLARED_IMAGE,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,6 +33,13 @@ ONECLICK_QUICK_TUNNEL_LABEL = "com.oneclickhost.cloudflare-quick-tunnel"
 TRAEFIK_EXPOSURE = "traefik"
 CLOUDFLARE_QUICK_EXPOSURE = "cloudflare_quick"
 CLOUDFLARE_QUICK_URL_RE = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com", re.IGNORECASE)
+
+
+def _container_log_config() -> LogConfig:
+    return LogConfig(
+        type=LogConfig.types.JSON,
+        config={"max-size": CONTAINER_LOG_MAX_SIZE, "max-file": str(CONTAINER_LOG_MAX_FILES)},
+    )
 
 
 def slugify(value: str) -> str:
@@ -241,18 +253,20 @@ def _create_cloudflare_quick_tunnel(
     }
     logger.info("Starting Cloudflare Quick Tunnel %s -> %s", tunnel_name, target_url)
     try:
-        client.images.get("cloudflare/cloudflared:latest")
+        client.images.get(CLOUDFLARED_IMAGE)
     except NotFound:
-        client.images.pull("cloudflare/cloudflared:latest")
+        client.images.pull(CLOUDFLARED_IMAGE)
 
     tunnel = client.containers.create(
-        image="cloudflare/cloudflared:latest",
+        image=CLOUDFLARED_IMAGE,
         name=tunnel_name,
         command=["tunnel", "--no-autoupdate", "--url", target_url],
         detach=True,
         labels=labels,
         mem_limit=CONTAINER_MEMORY_LIMIT,
         nano_cpus=int(CONTAINER_CPU_LIMIT * 1e9),
+        pids_limit=CONTAINER_PIDS_LIMIT,
+        log_config=_container_log_config(),
         restart_policy={"Name": "unless-stopped"},
     )
     client.api.connect_container_to_network(tunnel.id, TRAEFIK_NETWORK)
@@ -496,6 +510,8 @@ def run_container(
         environment=environment,
         mem_limit=CONTAINER_MEMORY_LIMIT,
         nano_cpus=int(CONTAINER_CPU_LIMIT * 1e9),
+        pids_limit=CONTAINER_PIDS_LIMIT,
+        log_config=_container_log_config(),
         restart_policy={"Name": "unless-stopped"},
         # No network= here; connect manually below to support aliases
     )
@@ -638,6 +654,8 @@ def run_postgres_container(
         environment=environment,
         mem_limit=CONTAINER_MEMORY_LIMIT,
         nano_cpus=int(CONTAINER_CPU_LIMIT * 1e9),
+        pids_limit=CONTAINER_PIDS_LIMIT,
+        log_config=_container_log_config(),
         labels=labels,
         restart_policy={"Name": "unless-stopped"},
         volumes={volume_name: {"bind": "/var/lib/postgresql/data", "mode": "rw"}},
@@ -690,6 +708,8 @@ def run_redis_container(
         detach=True,
         mem_limit=CONTAINER_MEMORY_LIMIT,
         nano_cpus=int(CONTAINER_CPU_LIMIT * 1e9),
+        pids_limit=CONTAINER_PIDS_LIMIT,
+        log_config=_container_log_config(),
         labels=labels,
         restart_policy={"Name": "unless-stopped"},
         volumes={volume_name: {"bind": "/data", "mode": "rw"}},
@@ -772,4 +792,3 @@ def cleanup_service_artifacts(
             logger.debug("No Docker image to remove: %s", image_tag)
         except APIError as e:
             logger.warning("Could not remove Docker image %s: %s", image_tag, e)
-

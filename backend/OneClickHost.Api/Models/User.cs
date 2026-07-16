@@ -17,6 +17,10 @@ public class User
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDisabled { get; set; }
+    public DateTime? PilotTermsAcceptedAt { get; set; }
+
+    public ICollection<Invite> RedeemedInvites { get; set; } = new List<Invite>();
 
     // Navigation
     public ICollection<Project> Projects { get; set; } = new List<Project>();

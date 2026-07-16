@@ -11,12 +11,17 @@ from typing import Any
 import docker
 import yaml
 from docker.errors import APIError, NotFound
+from docker.types import LogConfig
 
 from config import (
     CONTAINER_CPU_LIMIT,
     CONTAINER_MEMORY_LIMIT,
     ENABLE_POST_START_COMMANDS,
     EXECUTION_NODE_BIND_HOST,
+    CONTAINER_LOG_MAX_FILES,
+    CONTAINER_LOG_MAX_SIZE,
+    CONTAINER_PIDS_LIMIT,
+    CLOUDFLARED_IMAGE,
     EXECUTION_NODE_PRIVATE_HOST,
     TRAEFIK_DOMAIN,
     TRAEFIK_NETWORK,
@@ -69,6 +74,7 @@ INFRA_SERVICE_HINTS = (
     "smtp",
     "database",
 )
+POSTGRES_CAPABILITIES = ["CHOWN", "FOWNER", "SETUID", "SETGID", "DAC_OVERRIDE", "NET_BIND_SERVICE"]
 
 
 def _client():
@@ -248,8 +254,8 @@ def _validate_service(service_name: str, service: dict[str, Any], source_path: s
             raise RuntimeError(f"Blocked unsafe compose key '{key}' in service '{service_name}'.")
 
     for key in BLOCKED_HOST_MODE_KEYS:
-        if service.get(key) == "host":
-            raise RuntimeError(f"Blocked host mode '{key}: host' in service '{service_name}'.")
+        if service.get(key) is not None:
+            raise RuntimeError(f"Blocked unsafe namespace mode '{key}' in service '{service_name}'.")
 
     for volume in _as_list(service.get("volumes")):
         if isinstance(volume, str):
@@ -267,16 +273,23 @@ def _validate_service(service_name: str, service: dict[str, Any], source_path: s
             _resolve_under_source(source_path, source, f"volume bind in service '{service_name}'")
 
 
-def _validate_external_resources(compose: dict[str, Any]):
+def _validate_project_resources(compose: dict[str, Any]):
     for kind in ("networks", "volumes"):
         resources = compose.get(kind) or {}
         if not isinstance(resources, dict):
-            continue
+            raise RuntimeError(f"Compose {kind} must be an object.")
         for name, config in resources.items():
-            if isinstance(config, dict) and config.get("external"):
-                external_name = config.get("name") or name
-                if kind != "networks" or external_name != TRAEFIK_NETWORK:
-                    raise RuntimeError(f"Blocked external {kind[:-1]} '{external_name}'.")
+            if not isinstance(config, dict):
+                continue
+            if config.get("external"):
+                raise RuntimeError(f"Blocked external {kind[:-1]} '{config.get('name') or name}'.")
+            if kind == "networks":
+                if config.get("name"):
+                    raise RuntimeError(f"Blocked custom network name '{config['name']}'.")
+                if config.get("driver") not in (None, "bridge"):
+                    raise RuntimeError(f"Blocked unsafe network driver in '{name}'.")
+                if config.get("driver_opts"):
+                    raise RuntimeError(f"Blocked network driver options in '{name}'.")
 
 
 def _normalize_environment(value: Any) -> dict[str, str]:
@@ -358,6 +371,16 @@ def _should_receive_implicit_env(service_name: str, service: dict[str, Any]) -> 
     return not any(hint in value for hint in INFRA_SERVICE_HINTS)
 
 
+def _platform_capabilities(service_name: str, service: dict[str, Any]) -> list[str]:
+    identity = f"{service_name} {service.get('image') or ''}".lower()
+    # Official PostgreSQL performs ownership and UID/GID setup on its named
+    # volume. These are the smallest capabilities verified to support that
+    # initialization; every other user service keeps the one-cap baseline.
+    if "postgres" in identity:
+        return POSTGRES_CAPABILITIES
+    return ["NET_BIND_SERVICE"]
+
+
 def _service_networks(service: dict[str, Any]) -> dict[str, Any]:
     networks = service.get("networks")
     if networks is None:
@@ -387,7 +410,7 @@ def prepare_compose_file(
     if not isinstance(services, dict) or not services:
         raise RuntimeError("Compose file must contain at least one service.")
 
-    _validate_external_resources(compose)
+    _validate_project_resources(compose)
     route_services = {route["serviceName"] for route in routes}
     missing_routes = route_services - set(services.keys())
     if missing_routes:
@@ -446,7 +469,16 @@ def prepare_compose_file(
     }
 
     compose.setdefault("networks", {})
-    compose["networks"]["oneclick-public"] = {"external": True, "name": TRAEFIK_NETWORK}
+    has_quick_tunnel_route = any(
+        route.get("exposureProvider") == CLOUDFLARE_QUICK_EXPOSURE for route in routes
+    )
+    # A private execution node exposes selected ports to control-plane Traefik,
+    # never a Docker network shared by other projects. Local single-host mode
+    # retains its Traefik bridge only for development diagnostics.
+    if not expose_route_ports:
+        compose["networks"]["oneclick-public"] = {"external": True, "name": TRAEFIK_NETWORK}
+    if has_quick_tunnel_route:
+        compose["networks"]["oneclick-tunnel"] = {}
 
     for service_name, service in services.items():
         if not isinstance(service, dict):
@@ -474,14 +506,35 @@ def prepare_compose_file(
             if key in declared_build_args:
                 _set_build_arg(service, key, value)
                 sanitize_logs.append(f"Injected environment variable '{key}' into build args for service '{service_name}'.")
-        service.setdefault("mem_limit", CONTAINER_MEMORY_LIMIT)
-        service.setdefault("cpus", str(CONTAINER_CPU_LIMIT))
-        service.setdefault("pids_limit", int(os.getenv("CONTAINER_PIDS_LIMIT", "256")))
+        # Platform limits are authoritative. User Compose values must never be
+        # able to raise execution-node resource consumption.
+        service.pop("deploy", None)
+        service["mem_limit"] = CONTAINER_MEMORY_LIMIT
+        service["cpus"] = str(CONTAINER_CPU_LIMIT)
+        service["pids_limit"] = CONTAINER_PIDS_LIMIT
+        service["cap_drop"] = ["ALL"]
+        service["cap_add"] = _platform_capabilities(service_name, service)
+        service["security_opt"] = ["no-new-privileges:true"]
+        service["logging"] = {
+            "driver": "json-file",
+            "options": {
+                "max-size": CONTAINER_LOG_MAX_SIZE,
+                "max-file": str(CONTAINER_LOG_MAX_FILES),
+            },
+        }
 
         if service_name in route_services:
             networks = _service_networks(service)
             alias = f"{compose_project_name}-{_slug(service_name)}"
-            networks["oneclick-public"] = {"aliases": [alias]}
+            route_providers = {
+                route.get("exposureProvider", TRAEFIK_EXPOSURE)
+                for route in routes
+                if route["serviceName"] == service_name
+            }
+            if TRAEFIK_EXPOSURE in route_providers and not expose_route_ports:
+                networks["oneclick-public"] = {"aliases": [alias]}
+            if CLOUDFLARE_QUICK_EXPOSURE in route_providers:
+                networks["oneclick-tunnel"] = {"aliases": [alias]}
             service["networks"] = networks
             if expose_route_ports:
                 published_ports = [
@@ -633,20 +686,25 @@ def create_cloudflare_quick_tunnels(compose_project_name: str, routes: list[dict
         }
         logger.info("Starting Cloudflare Quick Tunnel %s -> %s", container_name, target_url)
         try:
-            client.images.get("cloudflare/cloudflared:latest")
+            client.images.get(CLOUDFLARED_IMAGE)
         except NotFound:
-            client.images.pull("cloudflare/cloudflared:latest")
+            client.images.pull(CLOUDFLARED_IMAGE)
         container = client.containers.create(
-            image="cloudflare/cloudflared:latest",
+            image=CLOUDFLARED_IMAGE,
             name=container_name,
             command=["tunnel", "--no-autoupdate", "--url", target_url],
             detach=True,
             labels=labels,
             mem_limit=CONTAINER_MEMORY_LIMIT,
             nano_cpus=int(CONTAINER_CPU_LIMIT * 1e9),
+            pids_limit=CONTAINER_PIDS_LIMIT,
+            log_config=LogConfig(
+                type=LogConfig.types.JSON,
+                config={"max-size": CONTAINER_LOG_MAX_SIZE, "max-file": str(CONTAINER_LOG_MAX_FILES)},
+            ),
             restart_policy={"Name": "unless-stopped"},
         )
-        client.api.connect_container_to_network(container.id, TRAEFIK_NETWORK)
+        client.api.connect_container_to_network(container.id, f"{compose_project_name}_oneclick-tunnel")
         container.start()
         public_urls.append(_wait_for_quick_tunnel_url(container, container_name))
 

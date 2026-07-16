@@ -92,3 +92,10 @@ public record UpsertRouteTargetRequest(
     [Required, MaxLength(1000)] string TargetUrl,
     [MaxLength(30)] string? Status
 );
+
+public record CleanupInventoryResponse(
+    List<Guid> ActiveDeploymentIds,
+    List<Guid> ActiveServiceIds,
+    List<string> ActiveComposeProjectNames,
+    List<string> ActiveImageTags
+);

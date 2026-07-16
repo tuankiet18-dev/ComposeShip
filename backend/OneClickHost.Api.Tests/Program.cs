@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using OneClickHost.Api.Data;
+using OneClickHost.Api.DTOs.Auth;
 using OneClickHost.Api.DTOs.Projects;
 using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Models;
@@ -18,6 +19,15 @@ var tests = new (string Name, Func<Task> Test)[]
     ("cleanup states keep the runtime slot reserved", CleanupStatesKeepRuntimeSlot),
     ("terminal cleanup states release the runtime slot", TerminalCleanupStatesReleaseRuntimeSlot),
     ("enforces configured project service and env quotas", EnforcesConfiguredQuotaCaps),
+    ("blocks deploy when global active capacity is full", BlocksGlobalActiveCapacity),
+    ("blocks deploy when the global queue is full", BlocksGlobalQueueCapacity),
+    ("reports safe global capacity without tenant details", ReportsSafeRuntimeCapacity),
+    ("redeems a hashed one-time invite", RedeemsOneTimeInvite),
+    ("rejects revoked and expired invites", RejectsInvalidInvites),
+    ("enforces the pilot account cap", EnforcesPilotAccountCap),
+    ("requires pilot terms acceptance before redeeming an invite", RequiresPilotTermsAcceptance),
+    ("admin recovery controls account node and cleanup state", AdminRecoveryControlsRuntime),
+    ("compose-only runtime rejects legacy service deployment", ComposeOnlyRejectsServiceDeployment),
 };
 
 foreach (var test in tests)
@@ -289,6 +299,179 @@ static async Task EnforcesConfiguredQuotaCaps()
     AssertThrows<QuotaExceededException>(() => quota.EnsureComposeLimitsAsync(routesCount: 1, envVarsCount: 2));
 }
 
+static async Task BlocksGlobalActiveCapacity()
+{
+    await using var db = CreateDbContext();
+    for (var i = 0; i < 3; i++)
+        SeedProject(db, Guid.NewGuid(), $"active-{i}", "live");
+    var userId = Guid.NewGuid();
+    var target = SeedProject(db, userId, "target", "active");
+    await db.SaveChangesAsync();
+
+    var quota = CreateQuotaService(db, new Dictionary<string, string?>
+    {
+        ["Capacity:MaxActiveProjects"] = "3",
+        ["Capacity:MaxQueuedDeployments"] = "10"
+    });
+    await AssertThrowsAsync<PlatformCapacityException>(() => quota.EnsureCanDeployProjectAsync(userId, target.Id));
+}
+
+static async Task BlocksGlobalQueueCapacity()
+{
+    await using var db = CreateDbContext();
+    var userId = Guid.NewGuid();
+    var target = SeedProject(db, userId, "target", "active");
+    var queuedOne = SeedProject(db, Guid.NewGuid(), "queued-one", "active");
+    var queuedTwo = SeedProject(db, Guid.NewGuid(), "queued-two", "active");
+    db.ProjectDeployments.AddRange(
+        new ProjectDeployment { ProjectId = queuedOne.Id, Status = "queued" },
+        new ProjectDeployment { ProjectId = queuedTwo.Id, Status = "queued" });
+    await db.SaveChangesAsync();
+
+    var quota = CreateQuotaService(db, new Dictionary<string, string?>
+    {
+        ["Capacity:MaxActiveProjects"] = "3",
+        ["Capacity:MaxQueuedDeployments"] = "2"
+    });
+    await AssertThrowsAsync<PlatformCapacityException>(() => quota.EnsureCanDeployProjectAsync(userId, target.Id));
+}
+
+static async Task ReportsSafeRuntimeCapacity()
+{
+    await using var db = CreateDbContext();
+    for (var i = 0; i < 3; i++)
+        SeedProject(db, Guid.NewGuid(), $"active-{i}", "live");
+    await db.SaveChangesAsync();
+
+    var quota = CreateQuotaService(db, new Dictionary<string, string?>
+    {
+        ["Capacity:MaxActiveProjects"] = "3",
+        ["Capacity:MaxQueuedDeployments"] = "10"
+    });
+    var capacity = await quota.GetRuntimeCapacityAsync();
+
+    AssertEqual(false, capacity.CanAcceptDeployment, "capacity availability");
+    AssertEqual("busy", capacity.Status, "capacity status");
+    AssertEqual(60, capacity.RetryAfterSeconds, "capacity retry interval");
+}
+
+static async Task RedeemsOneTimeInvite()
+{
+    await using var db = CreateDbContext();
+    var configuration = CreateInviteConfiguration();
+    var invites = new InviteService(db, configuration);
+    var created = await invites.CreateAsync(TimeSpan.FromHours(1), "internal tester");
+    var stored = await db.Invites.SingleAsync();
+    if (stored.CodeHash == created.Code)
+        throw new Exception("An invite code must never be stored in plaintext.");
+
+    var auth = new AuthService(db, configuration, invites);
+    var request = new RegisterRequest("pilot@example.test", "ValidPass1", "Pilot User", created.Code, true);
+    await auth.RegisterAsync(request);
+
+    stored = await db.Invites.SingleAsync();
+    AssertEqual(true, stored.RedeemedAt is not null, "invite redeemed timestamp");
+    AssertEqual(1, await db.Users.CountAsync(), "created user count");
+    AssertEqual(true, (await db.Users.SingleAsync()).PilotTermsAcceptedAt is not null, "pilot terms acceptance timestamp");
+    await AssertThrowsAsync<InviteRejectedException>(() => auth.RegisterAsync(
+        new RegisterRequest("second@example.test", "ValidPass1", "Second User", created.Code, true)));
+}
+
+static async Task RejectsInvalidInvites()
+{
+    await using var db = CreateDbContext();
+    var configuration = CreateInviteConfiguration();
+    var invites = new InviteService(db, configuration);
+    var revoked = await invites.CreateAsync(TimeSpan.FromHours(1), null);
+    await invites.RevokeAsync(revoked.Id);
+    var auth = new AuthService(db, configuration, invites);
+    await AssertThrowsAsync<InviteRejectedException>(() => auth.RegisterAsync(
+        new RegisterRequest("revoked@example.test", "ValidPass1", "Revoked", revoked.Code, true)));
+
+    var expired = await invites.CreateAsync(TimeSpan.FromSeconds(1), null);
+    var expiredEntity = await db.Invites.FindAsync(expired.Id) ?? throw new Exception("Invite missing.");
+    expiredEntity.ExpiresAt = DateTime.UtcNow.AddSeconds(-1);
+    await db.SaveChangesAsync();
+    await AssertThrowsAsync<InviteRejectedException>(() => auth.RegisterAsync(
+        new RegisterRequest("expired@example.test", "ValidPass1", "Expired", expired.Code, true)));
+}
+
+static async Task EnforcesPilotAccountCap()
+{
+    await using var db = CreateDbContext();
+    var configuration = CreateInviteConfiguration(new Dictionary<string, string?> { ["Invites:MaxAccounts"] = "1" });
+    var invites = new InviteService(db, configuration);
+    var auth = new AuthService(db, configuration, invites);
+    var first = await invites.CreateAsync(TimeSpan.FromHours(1), null);
+    await auth.RegisterAsync(new RegisterRequest("first@example.test", "ValidPass1", "First", first.Code, true));
+    var second = await invites.CreateAsync(TimeSpan.FromHours(1), null);
+    await AssertThrowsAsync<InviteRejectedException>(() => auth.RegisterAsync(
+        new RegisterRequest("second@example.test", "ValidPass1", "Second", second.Code, true)));
+    var secondEntity = await db.Invites.FindAsync(second.Id) ?? throw new Exception("Invite missing.");
+    AssertEqual(null, secondEntity.RedeemedAt, "account-cap rejection must not consume an invite");
+}
+
+static async Task RequiresPilotTermsAcceptance()
+{
+    await using var db = CreateDbContext();
+    var configuration = CreateInviteConfiguration();
+    var invites = new InviteService(db, configuration);
+    var invite = await invites.CreateAsync(TimeSpan.FromHours(1), null);
+    var auth = new AuthService(db, configuration, invites);
+
+    await AssertThrowsAsync<InvalidOperationException>(() => auth.RegisterAsync(
+        new RegisterRequest("terms@example.test", "ValidPass1", "Terms", invite.Code, false)));
+    AssertEqual(null, (await db.Invites.SingleAsync()).RedeemedAt, "terms rejection must not consume an invite");
+    AssertEqual(0, await db.Users.CountAsync(), "terms rejection must not create an account");
+}
+
+static async Task AdminRecoveryControlsRuntime()
+{
+    await using var db = CreateDbContext();
+    var user = new User
+    {
+        Email = "recovery@example.test",
+        FullName = "Recovery User",
+        PasswordHash = "not-used-by-this-test"
+    };
+    var node = new ExecutionNode
+    {
+        Name = "recovery-node",
+        PublicOrPrivateBaseUrl = "http://10.0.0.10",
+        AgentTokenHash = "not-used-by-this-test"
+    };
+    var project = new Project
+    {
+        UserId = user.Id,
+        Name = "cleanup-project",
+        Status = "cleanup_failed"
+    };
+    db.AddRange(user, node, project);
+    await db.SaveChangesAsync();
+
+    var recovery = new AdminRecoveryService(db, new ProjectEventService(db, new CorrelationContext()));
+    await recovery.SetAccountDisabledAsync(user.Id, true);
+    await recovery.DrainNodeAsync(node.Id, true);
+    await recovery.RetryProjectCleanupAsync(project.Id);
+
+    AssertEqual(true, (await db.Users.FindAsync(user.Id))!.IsDisabled, "disabled account state");
+    AssertEqual("draining", (await db.ExecutionNodes.FindAsync(node.Id))!.Status, "drained node state");
+    AssertEqual("deleting", (await db.Projects.FindAsync(project.Id))!.Status, "cleanup retry project state");
+    AssertEqual(1, await db.ProjectEvents.CountAsync(e => e.ProjectId == project.Id && e.Type == "cleanup.retry_requested"), "cleanup retry event");
+}
+
+static async Task ComposeOnlyRejectsServiceDeployment()
+{
+    await using var db = CreateDbContext();
+    var configuration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?> { ["Runtime:ComposeOnly"] = "true" })
+        .Build();
+    var deployments = new DeploymentService(db, CreateQuotaService(db), configuration);
+
+    await AssertThrowsAsync<RuntimeModeUnavailableException>(() =>
+        deployments.TriggerDeploymentAsync(Guid.NewGuid(), Guid.NewGuid()));
+}
+
 static AppDbContext CreateDbContext()
 {
     var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -304,7 +487,9 @@ static QuotaService CreateQuotaService(AppDbContext db, Dictionary<string, strin
         ["Quotas:MaxProjectsPerUser"] = "3",
         ["Quotas:MaxServicesPerProject"] = "5",
         ["Quotas:MaxRoutesPerProject"] = "10",
-        ["Quotas:MaxEnvVarsPerProject"] = "50"
+        ["Quotas:MaxEnvVarsPerProject"] = "50",
+        ["Capacity:MaxActiveProjects"] = "3",
+        ["Capacity:MaxQueuedDeployments"] = "10"
     };
 
     var configuration = new ConfigurationBuilder()
@@ -312,6 +497,23 @@ static QuotaService CreateQuotaService(AppDbContext db, Dictionary<string, strin
         .Build();
 
     return new QuotaService(db, configuration);
+}
+
+static IConfiguration CreateInviteConfiguration(Dictionary<string, string?>? overrides = null)
+{
+    var values = new Dictionary<string, string?>
+    {
+        ["Invites:Required"] = "true",
+        ["Invites:MaxAccounts"] = "10",
+        ["Invites:CodePepper"] = "test-invite-pepper-minimum-32-characters",
+        ["Jwt:Secret"] = "test-jwt-secret-minimum-32-characters",
+        ["Jwt:Issuer"] = "test",
+        ["Jwt:Audience"] = "test"
+    };
+    if (overrides is not null)
+        foreach (var (key, value) in overrides)
+            values[key] = value;
+    return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 }
 
 static Project SeedProject(AppDbContext db, Guid userId, string name, string projectStatus)

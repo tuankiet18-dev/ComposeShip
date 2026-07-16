@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.Deployments;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Models;
 using System.Text.Json;
 
@@ -10,17 +11,20 @@ public class DeploymentService
 {
     private readonly AppDbContext _db;
     private readonly QuotaService _quotaService;
+    private readonly IConfiguration _configuration;
 
-    public DeploymentService(AppDbContext db, QuotaService quotaService)
+    public DeploymentService(AppDbContext db, QuotaService quotaService, IConfiguration configuration)
     {
         _db = db;
         _quotaService = quotaService;
+        _configuration = configuration;
     }
 
     public async Task<DeploymentResponse> TriggerDeploymentAsync(Guid serviceId, Guid userId)
     {
-        // TODO: enforce AntiAbuse:DeploymentRateLimitPerMinute with ASP.NET Core
-        // rate limiting middleware before allowing untrusted multi-user access.
+        if (_configuration.GetValue("Runtime:ComposeOnly", false))
+            throw new RuntimeModeUnavailableException("This MVP accepts Compose deployments only. Deploy the project stack instead.");
+
         var service = await _db.Services
             .Include(s => s.Project)
             .Include(s => s.Deployments)

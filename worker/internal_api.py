@@ -26,16 +26,19 @@ class ExecutionNodeClient:
         if not self.token:
             raise RuntimeError("EXECUTION_NODE_TOKEN is required in executor mode.")
 
-    def _request(self, method: str, path: str, body: dict | None = None) -> dict:
+    def _request(self, method: str, path: str, body: dict | None = None, correlation_id: str | None = None) -> dict:
         data = None if body is None else json.dumps(body).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "X-OneClick-Node-Token": self.token,
+        }
+        if correlation_id:
+            headers["X-Correlation-ID"] = correlation_id
         request = urllib.request.Request(
             f"{self.base_url}{path}",
             data=data,
             method=method,
-            headers={
-                "Content-Type": "application/json",
-                "X-OneClick-Node-Token": self.token,
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
@@ -93,7 +96,11 @@ class ExecutionNodeClient:
             "POST",
             f"/execution-nodes/{self.node_id}/deployments/{deployment_id}/events",
             body,
+            correlation_id=deployment_id,
         )
 
     def route_target(self, body: dict):
         return self._request("POST", f"/execution-nodes/{self.node_id}/route-targets", body)
+
+    def cleanup_inventory(self) -> dict:
+        return self._request("GET", f"/execution-nodes/{self.node_id}/cleanup-inventory")

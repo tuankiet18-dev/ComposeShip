@@ -12,6 +12,12 @@ namespace OneClickHost.Api.Services;
 
 public class ExecutionNodeService
 {
+    private static readonly string[] RuntimeHoldingStatuses =
+    [
+        "queued", "cloning", "building", "deploying", "live", "unhealthy",
+        "stopping", "deleting", "deleting_failed", "cleanup_failed"
+    ];
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly Regex SafeFileName = new("[^a-zA-Z0-9.-]+", RegexOptions.Compiled);
     private readonly AppDbContext _db;
@@ -79,6 +85,45 @@ public class ExecutionNodeService
         await _db.SaveChangesAsync();
         await RestoreOfflineRoutesForRecoveredNodeAsync(node);
         return ToNodeResponse(node);
+    }
+
+    public async Task<CleanupInventoryResponse> GetCleanupInventoryAsync(ExecutionNode node)
+    {
+        var composeDeployments = await _db.ProjectDeployments
+            .Where(d => d.LockedByNodeId == node.Id && RuntimeHoldingStatuses.Contains(d.Project.Status))
+            .Select(d => new { d.Id, d.ComposeProjectName })
+            .ToListAsync();
+
+        var routedComposeNames = await _db.RouteTargets
+            .Where(r => r.ExecutionNodeId == node.Id && r.Status == "active" && r.Project.ComposeProjectName != null)
+            .Select(r => r.Project.ComposeProjectName!)
+            .Distinct()
+            .ToListAsync();
+
+        var activeImageTags = await _db.Deployments
+            .Where(d => d.LockedByNodeId == node.Id && RuntimeHoldingStatuses.Contains(d.Service.Status) && d.ImageTag != null)
+            .Select(d => d.ImageTag!)
+            .Distinct()
+            .ToListAsync();
+
+        var activeServiceIds = await _db.Services
+            .Where(s => RuntimeHoldingStatuses.Contains(s.Status)
+                && (s.Deployments.Any(d => d.LockedByNodeId == node.Id)
+                    || s.RouteTargets.Any(r => r.ExecutionNodeId == node.Id && r.Status == "active")))
+            .Select(s => s.Id)
+            .Distinct()
+            .ToListAsync();
+
+        return new CleanupInventoryResponse(
+            composeDeployments.Select(d => d.Id).ToList(),
+            activeServiceIds,
+            composeDeployments.Select(d => d.ComposeProjectName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .Concat(routedComposeNames)
+                .Distinct(StringComparer.Ordinal)
+                .ToList(),
+            activeImageTags);
     }
 
     public async Task<LeaseResponse> LeaseAsync(ExecutionNode node, LeaseRequest request)

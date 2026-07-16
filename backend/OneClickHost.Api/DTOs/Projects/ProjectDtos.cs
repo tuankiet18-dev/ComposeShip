@@ -18,6 +18,14 @@ public record ProjectResponse(
     DateTime UpdatedAt
 );
 
+// This deliberately exposes no global counts or tenant information. Capacity
+// can change between a dashboard refresh and a deployment transaction.
+public record RuntimeCapacityResponse(
+    bool CanAcceptDeployment,
+    string Status,
+    int RetryAfterSeconds
+);
+
 public record ProjectDetailResponse(
     Guid Id,
     string Name,

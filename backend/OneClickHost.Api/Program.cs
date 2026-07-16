@@ -1,5 +1,8 @@
 using System.Text;
+using System.Net;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,6 +12,18 @@ using OneClickHost.Api.Data;
 using OneClickHost.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole();
+
+var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+{
+    Directory.CreateDirectory(dataProtectionKeyPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath))
+        .SetApplicationName("OneClickHost");
+}
 
 ValidateProductionConfiguration(builder.Configuration, builder.Environment);
 
@@ -42,6 +57,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
 
                 return Task.CompletedTask;
+            },
+            OnTokenValidated = async context =>
+            {
+                var id = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(id, out var userId))
+                {
+                    context.Fail("Invalid token subject.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                if (await db.Users.AnyAsync(user => user.Id == userId && user.IsDisabled))
+                    context.Fail("Account disabled.");
             }
         };
     });
@@ -50,6 +78,8 @@ builder.Services.AddAuthorization();
 
 // ── Application Services ─────────────────────────
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<InviteService>();
+builder.Services.AddSingleton<CorrelationContext>();
 builder.Services.AddSingleton<SecretEncryptionService>();
 builder.Services.AddScoped<SecretBackfillService>();
 builder.Services.AddScoped<ProjectService>();
@@ -57,6 +87,7 @@ builder.Services.AddScoped<ServiceService>();
 builder.Services.AddScoped<DeploymentService>();
 builder.Services.AddScoped<ExecutionNodeService>();
 builder.Services.AddScoped<ProjectEventService>();
+builder.Services.AddScoped<AdminRecoveryService>();
 builder.Services.AddScoped<QuotaService>();
 builder.Services.AddHostedService<ExecutionNodeMonitorService>();
 builder.Services.AddHttpClient<IAiDeploymentDiagnosisService, AiDeploymentDiagnosisService>();
@@ -76,6 +107,17 @@ builder.Services.AddRateLimiter(options =>
             new FixedWindowRateLimiterOptions
             {
                 PermitLimit = builder.Configuration.GetValue<int>("RateLimits:AuthPerMinute", 5),
+                Window = TimeSpan.FromMinutes(1)
+            });
+    });
+
+    options.AddPolicy("InviteRedemption", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter($"invite:{ip}", _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:InviteRedemptionPerMinute", 5),
                 Window = TimeSpan.FromMinutes(1)
             });
     });
@@ -143,13 +185,60 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+if (args.Length == 1 && args[0] == "--migrate")
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<SecretBackfillService>().EncryptLegacyEnvironmentValuesAsync();
+    return;
+}
+
+if (InviteCli.IsCommand(args))
+{
+    using var scope = app.Services.CreateScope();
+    await InviteCli.RunAsync(args, scope.ServiceProvider.GetRequiredService<InviteService>());
+    return;
+}
+
+if (AdminRecoveryCli.IsCommand(args))
+{
+    using var scope = app.Services.CreateScope();
+    await AdminRecoveryCli.RunAsync(args, scope.ServiceProvider.GetRequiredService<AdminRecoveryService>());
+    return;
+}
+
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 };
-forwardedHeadersOptions.KnownNetworks.Clear();
-forwardedHeadersOptions.KnownProxies.Clear();
+var trustedProxyNetworks = app.Configuration["ForwardedHeaders:TrustedNetworks"]
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? ["172.16.0.0/12"];
+foreach (var cidr in trustedProxyNetworks)
+{
+    if (!System.Net.IPNetwork.TryParse(cidr, out var network))
+        throw new InvalidOperationException($"ForwardedHeaders:TrustedNetworks contains invalid CIDR '{cidr}'.");
+    forwardedHeadersOptions.KnownIPNetworks.Add(network);
+}
 app.UseForwardedHeaders(forwardedHeadersOptions);
+
+app.Use(async (context, next) =>
+{
+    const string headerName = "X-Correlation-ID";
+    var supplied = context.Request.Headers[headerName].FirstOrDefault();
+    var correlationId = !string.IsNullOrWhiteSpace(supplied)
+        && Regex.IsMatch(supplied, "^[A-Za-z0-9._-]{8,64}$")
+        ? supplied
+        : Guid.NewGuid().ToString("N");
+
+    var correlation = context.RequestServices.GetRequiredService<CorrelationContext>();
+    correlation.Id = correlationId;
+    context.Response.Headers[headerName] = correlationId;
+    using (app.Logger.BeginScope(new Dictionary<string, object?> { ["correlationId"] = correlationId }))
+        await next();
+    correlation.Id = null;
+});
 
 // ── Auto-migrate database ────────────────────────
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue("OneClick:AutoMigrateDatabase", false))
@@ -189,7 +278,8 @@ static void ValidateProductionConfiguration(IConfiguration configuration, IWebHo
     var placeholderValues = new[]
     {
         "change_me_in_production",
-        "super-secret-jwt-key-change-in-production-min-32-chars!!"
+        "super-secret-jwt-key-change-in-production-min-32-chars!!",
+        "oneclick-dev-invite-code-pepper-minimum-32-chars"
     };
 
     RequireRealValue(configuration["Jwt:Secret"], "Jwt:Secret", placeholderValues);
@@ -199,6 +289,8 @@ static void ValidateProductionConfiguration(IConfiguration configuration, IWebHo
         placeholderValues);
     RequireRealValue(configuration.GetConnectionString("DefaultConnection"), "ConnectionStrings:DefaultConnection", placeholderValues);
     RequireRealValue(configuration["Cors:AllowedOrigins"], "Cors:AllowedOrigins", ["http://localhost:3000"]);
+    RequireRealValue(configuration["Invites:CodePepper"], "Invites:CodePepper", placeholderValues);
+    RequireRealValue(configuration["ForwardedHeaders:TrustedNetworks"], "ForwardedHeaders:TrustedNetworks", []);
 }
 
 static void RequireRealValue(string? value, string name, IEnumerable<string> disallowedValues)

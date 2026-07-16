@@ -98,4 +98,22 @@ public class ExecutionNodesController : ControllerBase
             return Unauthorized(new { message = "Invalid execution node token." });
         }
     }
+
+    [HttpGet("{id:guid}/cleanup-inventory")]
+    public async Task<ActionResult<CleanupInventoryResponse>> GetCleanupInventory(Guid id)
+    {
+        try
+        {
+            var node = await _executionNodeService.AuthenticateAsync(id, Request.Headers[NodeTokenHeader].FirstOrDefault());
+            return Ok(await _executionNodeService.GetCleanupInventoryAsync(node));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Execution node not found." });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { message = "Invalid execution node token." });
+        }
+    }
 }

@@ -41,6 +41,15 @@ public class DeploymentsController : ControllerBase
         {
             return Conflict(new { message = ex.Message });
         }
+        catch (RuntimeModeUnavailableException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (PlatformCapacityException ex)
+        {
+            Response.Headers.RetryAfter = "60";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message });
+        }
     }
 
     [HttpGet("api/services/{serviceId:guid}/deployments")]

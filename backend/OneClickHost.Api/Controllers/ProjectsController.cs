@@ -15,11 +15,16 @@ public class ProjectsController : ControllerBase
 {
     private readonly ProjectService _projectService;
     private readonly ProjectEventService _projectEventService;
+    private readonly QuotaService _quotaService;
 
-    public ProjectsController(ProjectService projectService, ProjectEventService projectEventService)
+    public ProjectsController(
+        ProjectService projectService,
+        ProjectEventService projectEventService,
+        QuotaService quotaService)
     {
         _projectService = projectService;
         _projectEventService = projectEventService;
+        _quotaService = quotaService;
     }
 
     [HttpGet]
@@ -28,6 +33,12 @@ public class ProjectsController : ControllerBase
         var userId = GetUserId();
         var projects = await _projectService.GetUserProjectsAsync(userId);
         return Ok(projects);
+    }
+
+    [HttpGet("runtime-capacity")]
+    public async Task<ActionResult<RuntimeCapacityResponse>> GetRuntimeCapacity()
+    {
+        return Ok(await _quotaService.GetRuntimeCapacityAsync());
     }
 
     [HttpPost]
@@ -189,6 +200,11 @@ public class ProjectsController : ControllerBase
         catch (QuotaExceededException ex)
         {
             return Conflict(new { message = ex.Message });
+        }
+        catch (PlatformCapacityException ex)
+        {
+            Response.Headers.RetryAfter = "60";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message });
         }
     }
 

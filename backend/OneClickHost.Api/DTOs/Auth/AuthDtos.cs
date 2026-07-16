@@ -7,7 +7,9 @@ public record RegisterRequest(
     [Required, MinLength(8)]
     [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, and one number.")]
     string Password,
-    [Required, MaxLength(100)] string FullName
+    [Required, MaxLength(100)] string FullName,
+    [Required, MinLength(20), MaxLength(200)] string InviteCode,
+    bool AcceptedPilotTerms
 );
 
 public record LoginRequest(

@@ -34,6 +34,7 @@ from db import (
     fetch_live_backend_url,
     complete_project_failure_cleanup,
     complete_project_stop,
+    fetch_active_runtime_inventory,
     mark_live_deployments_stopped,
 )
 from modules.repo_cloner import clone_repo, cleanup_workspace
@@ -55,6 +56,7 @@ from modules.compose_runner import (
     deploy_compose_stack,
     find_compose_file,
 )
+from modules.resource_guard import PeriodicCleaner, ensure_build_capacity
 from secret_utils import decrypt_secret
 from internal_api import ExecutionNodeClient
 
@@ -65,6 +67,20 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("worker")
+resource_cleaner = PeriodicCleaner()
+
+
+def _guard_build(inventory: dict):
+    ensure_build_capacity(lambda: resource_cleaner.run(inventory, force=True))
+
+
+def _run_periodic_cleanup(inventory_provider):
+    if not resource_cleaner.is_due():
+        return
+    try:
+        resource_cleaner.run(inventory_provider())
+    except Exception as error:
+        logger.warning("Periodic resource cleanup skipped: %s", error)
 
 
 def _read_json_list(value):
@@ -136,6 +152,9 @@ def process_project_deployment(conn, deployment: dict):
     all_logs = []
 
     try:
+        inventory = fetch_active_runtime_inventory(conn)
+        inventory["activeDeploymentIds"] = [*inventory["activeDeploymentIds"], deployment_id]
+        _guard_build(inventory)
         all_logs.append(f"=== Cloning {repo_url} (branch: {branch}) ===")
         source_path = clone_repo(repo_url, branch, subfolder, deployment_id)
         all_logs.append("✓ Repository cloned successfully")
@@ -217,6 +236,9 @@ def process_project_deployment_lease(client: ExecutionNodeClient, deployment: di
     all_logs: list[str] = []
 
     try:
+        inventory = client.cleanup_inventory()
+        inventory["activeDeploymentIds"] = [*(inventory.get("activeDeploymentIds") or []), deployment_id]
+        _guard_build(inventory)
         all_logs.append(f"=== Cloning {repo_url} (branch: {branch}) ===")
         source_path = clone_repo(repo_url, branch, subfolder, deployment_id)
         all_logs.append("Repository cloned successfully")
@@ -403,6 +425,9 @@ def process_deployment(conn, deployment: dict):
             return
 
         # ── Step 1: Clone ─────────────────────────
+        inventory = fetch_active_runtime_inventory(conn)
+        inventory["activeDeploymentIds"] = [*inventory["activeDeploymentIds"], deployment_id]
+        _guard_build(inventory)
         failure_step = "clone_repo"
         all_logs.append(f"=== Cloning {repo_url} (branch: {branch}) ===")
         source_path = clone_repo(repo_url, branch, subfolder, deployment_id)
@@ -688,6 +713,8 @@ def run_singlehost_loop():
             process_deleting_services(conn)
             process_deleting_compose_projects(conn)
 
+            _run_periodic_cleanup(lambda: fetch_active_runtime_inventory(conn))
+
             conn.close()
 
         except KeyboardInterrupt:
@@ -727,6 +754,7 @@ def run_executor_loop():
                     )
             else:
                 logger.debug("No leased work. Sleeping...")
+            _run_periodic_cleanup(client.cleanup_inventory)
         except KeyboardInterrupt:
             logger.info("Worker shutting down...")
             break

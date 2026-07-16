@@ -24,7 +24,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    [EnableRateLimiting("Auth")]
+    [EnableRateLimiting("InviteRedemption")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         try
@@ -35,6 +35,10 @@ public class AuthController : ControllerBase
         catch (InvalidOperationException)
         {
             // Simulate success to prevent email enumeration
+            return Accepted(new { message = "Registration processed successfully. Please log in to continue." });
+        }
+        catch (OneClickHost.Api.Exceptions.InviteRejectedException)
+        {
             return Accepted(new { message = "Registration processed successfully. Please log in to continue." });
         }
     }

@@ -25,6 +25,51 @@ def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def fetch_active_runtime_inventory(conn):
+    """Return DB-authoritative runtime identifiers that periodic cleanup must preserve."""
+    holding_statuses = (
+        "queued", "cloning", "building", "deploying", "live", "unhealthy",
+        "stopping", "deleting", "deleting_failed", "cleanup_failed",
+    )
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            '''
+            SELECT d."Id", d."ComposeProjectName"
+            FROM "ProjectDeployments" d
+            JOIN "Projects" p ON p."Id" = d."ProjectId"
+            WHERE p."Status" IN %s
+            ''',
+            (holding_statuses,),
+        )
+        compose_rows = cur.fetchall()
+        cur.execute(
+            '''
+            SELECT DISTINCT d."ImageTag"
+            FROM "Deployments" d
+            JOIN "Services" s ON s."Id" = d."ServiceId"
+            WHERE s."Status" IN %s AND d."ImageTag" IS NOT NULL
+            ''',
+            (holding_statuses,),
+        )
+        image_rows = cur.fetchall()
+        cur.execute(
+            '''
+            SELECT DISTINCT s."Id"
+            FROM "Services" s
+            WHERE s."Status" IN %s
+            ''',
+            (holding_statuses,),
+        )
+        service_rows = cur.fetchall()
+    conn.commit()
+    return {
+        "activeDeploymentIds": [str(row["Id"]) for row in compose_rows],
+        "activeServiceIds": [str(row["Id"]) for row in service_rows],
+        "activeComposeProjectNames": [row["ComposeProjectName"] for row in compose_rows if row["ComposeProjectName"]],
+        "activeImageTags": [row["ImageTag"] for row in image_rows],
+    }
+
+
 def fetch_queued_deployment(conn):
     """
     Atomically pick up the next queued deployment.

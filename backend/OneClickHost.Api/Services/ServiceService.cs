@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
 using OneClickHost.Api.DTOs.Services;
+using OneClickHost.Api.Exceptions;
 using OneClickHost.Api.Models;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -17,12 +18,14 @@ public class ServiceService
     private readonly AppDbContext _db;
     private readonly SecretEncryptionService _secrets;
     private readonly QuotaService _quotaService;
+    private readonly IConfiguration _configuration;
 
-    public ServiceService(AppDbContext db, SecretEncryptionService secrets, QuotaService quotaService)
+    public ServiceService(AppDbContext db, SecretEncryptionService secrets, QuotaService quotaService, IConfiguration configuration)
     {
         _db = db;
         _secrets = secrets;
         _quotaService = quotaService;
+        _configuration = configuration;
     }
 
     public async Task<List<ServiceResponse>> GetServicesAsync(Guid projectId, Guid userId)
@@ -72,6 +75,7 @@ public class ServiceService
 
     public async Task<ServiceResponse> CreateServiceAsync(Guid projectId, Guid userId, CreateServiceRequest request)
     {
+        EnsureServiceModeIsAvailable();
         var projectExists = await _db.Projects.AnyAsync(p => p.Id == projectId && p.UserId == userId);
         if (!projectExists) throw new KeyNotFoundException("Project not found.");
 
@@ -137,6 +141,12 @@ public class ServiceService
             service.ServiceType, service.ExposureProvider, service.DetectedStack,
             service.NetworkAliases, service.Status, service.LiveUrl,
             service.CreatedAt, service.UpdatedAt);
+    }
+
+    private void EnsureServiceModeIsAvailable()
+    {
+        if (_configuration.GetValue("Runtime:ComposeOnly", false))
+            throw new RuntimeModeUnavailableException("This MVP accepts Compose projects only. Configure the project's Compose deployment instead.");
     }
 
     public async Task<ServiceResponse> UpdateServiceAsync(Guid serviceId, Guid userId, UpdateServiceRequest request)
@@ -328,18 +338,26 @@ public class ServiceService
         return serviceType is "frontend" or "backend" or "database" or "redis";
     }
 
-    private static string NormalizeExposureProvider(string? exposureProvider, string serviceType)
+    private string NormalizeExposureProvider(string? exposureProvider, string serviceType)
     {
         if (serviceType is "database" or "redis")
             return TraefikExposure;
 
         var normalized = string.IsNullOrWhiteSpace(exposureProvider)
-            ? TraefikExposure
+            ? DefaultExposureProvider()
             : exposureProvider.Trim().ToLowerInvariant();
         if (!ExposureProviders.Contains(normalized))
             throw new ArgumentException($"Invalid exposure provider: {exposureProvider}");
+        if (_configuration.GetValue("Runtime:RequireHttpsUserRoutes", false) && normalized != CloudflareQuickExposure)
+            throw new ArgumentException("The invite-only pilot only supports HTTPS Cloudflare preview routes.");
         return normalized;
     }
+
+    private string DefaultExposureProvider() =>
+        _configuration["Runtime:DefaultExposureProvider"]?.Trim().ToLowerInvariant() is { } configured
+            && ExposureProviders.Contains(configured)
+            ? configured
+            : CloudflareQuickExposure;
 
     private static string ToDatabaseIdentifier(string value)
     {

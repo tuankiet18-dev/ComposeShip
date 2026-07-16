@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<Invite> Invites => Set<Invite>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectDeployment> ProjectDeployments => Set<ProjectDeployment>();
     public DbSet<Service> Services => Set<Service>();
@@ -31,6 +32,17 @@ public class AppDbContext : DbContext
              .WithOne(p => p.User)
              .HasForeignKey(p => p.UserId)
              .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasMany(u => u.RedeemedInvites)
+             .WithOne(i => i.RedeemedByUser)
+             .HasForeignKey(i => i.RedeemedByUserId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Invite>(e =>
+        {
+            e.HasIndex(i => i.CodeHash).IsUnique();
+            e.HasIndex(i => new { i.RedeemedAt, i.RevokedAt, i.ExpiresAt });
         });
 
         // ── Project ───────────────────────────────

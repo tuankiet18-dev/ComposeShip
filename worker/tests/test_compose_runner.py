@@ -99,6 +99,46 @@ def test_prepare_compose_keeps_named_data_volume(tmp_path):
     with open(sanitized_file, encoding="utf-8") as f:
         sanitized = yaml.safe_load(f)
     assert sanitized["services"]["postgres"]["volumes"] == ["postgres_data:/var/lib/postgresql/data"]
+    assert sanitized["services"]["postgres"]["cap_drop"] == ["ALL"]
+    assert sanitized["services"]["postgres"]["cap_add"] == [
+        "CHOWN", "FOWNER", "SETUID", "SETGID", "DAC_OVERRIDE", "NET_BIND_SERVICE"
+    ]
+
+
+def test_prepare_compose_enforces_platform_resource_and_log_limits(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {
+            "services": {
+                "api": {
+                    "image": "example/api",
+                    "mem_limit": "8g",
+                    "cpus": "8",
+                    "pids_limit": 4096,
+                    "deploy": {"replicas": 20},
+                    "logging": {"driver": "json-file", "options": {"max-size": "10g"}},
+                }
+            }
+        },
+    )
+
+    sanitized_file, _ = prepare_compose_file(
+        compose_file,
+        str(tmp_path),
+        "project-1",
+        "deployment-1",
+        "oc-project",
+        [{"serviceName": "api", "routeSlug": "api", "internalPort": 8000}],
+        [],
+    )
+
+    with open(sanitized_file, encoding="utf-8") as f:
+        service = yaml.safe_load(f)["services"]["api"]
+    assert service["mem_limit"] == "256m"
+    assert service["cpus"] == "0.5"
+    assert service["pids_limit"] == 256
+    assert "deploy" not in service
+    assert service["logging"]["options"] == {"max-size": "10m", "max-file": "3"}
 
 
 def test_cleanup_stop_preserves_named_volumes(monkeypatch):
@@ -146,6 +186,25 @@ def test_prepare_compose_blocks_external_volumes(tmp_path):
         )
 
 
+def test_prepare_compose_blocks_external_networks_and_namespace_sharing(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {
+            "services": {"api": {"image": "example/api"}},
+            "networks": {"other-project": {"external": True}},
+        },
+    )
+    with pytest.raises(RuntimeError, match="Blocked external network"):
+        prepare_compose_file(compose_file, str(tmp_path), "project-1", "deployment-1", "oc-project", [], [])
+
+    compose_file = _write_compose(
+        tmp_path,
+        {"services": {"api": {"image": "example/api", "network_mode": "service:other"}}},
+    )
+    with pytest.raises(RuntimeError, match="Blocked unsafe namespace mode"):
+        prepare_compose_file(compose_file, str(tmp_path), "project-1", "deployment-1", "oc-project", [], [])
+
+
 def test_prepare_compose_exposes_only_routed_services_for_execution_node(tmp_path):
     compose_file = _write_compose(
         tmp_path,
@@ -174,6 +233,10 @@ def test_prepare_compose_exposes_only_routed_services_for_execution_node(tmp_pat
     assert sanitized["services"]["api"]["ports"][0]["target"] == 8000
     assert "ports" not in sanitized["services"]["db"]
     assert sanitized["services"]["api"]["environment"]["DATABASE_URL"] == "postgres://db/app"
+    assert "oneclick-public" not in sanitized["networks"]
+    assert sanitized["services"]["api"]["cap_drop"] == ["ALL"]
+    assert sanitized["services"]["api"]["cap_add"] == ["NET_BIND_SERVICE"]
+    assert sanitized["services"]["api"]["security_opt"] == ["no-new-privileges:true"]
 
 
 def test_prepare_compose_injects_matching_non_secret_build_args(tmp_path):
@@ -248,6 +311,8 @@ def test_prepare_compose_does_not_publish_cloudflare_quick_route_ports(tmp_path)
     with open(sanitized_file, encoding="utf-8") as f:
         sanitized = yaml.safe_load(f)
     assert "ports" not in sanitized["services"]["api"]
+    assert "oneclick-tunnel" in sanitized["networks"]
+    assert "oneclick-tunnel" in sanitized["services"]["api"]["networks"]
 
 
 def test_prepare_compose_rejects_unknown_exposure_provider(tmp_path):

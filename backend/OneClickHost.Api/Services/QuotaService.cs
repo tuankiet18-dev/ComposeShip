@@ -1,11 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using OneClickHost.Api.Data;
+using OneClickHost.Api.DTOs.Projects;
 using OneClickHost.Api.Exceptions;
 
 namespace OneClickHost.Api.Services;
 
 public class QuotaService
 {
+    private static readonly string[] ActiveStatuses =
+    [
+        "queued", "cloning", "building", "deploying", "live", "unhealthy",
+        "stopping", "deleting", "deleting_failed", "cleanup_failed"
+    ];
+
     private readonly AppDbContext _db;
     private readonly IConfiguration _configuration;
 
@@ -17,25 +24,60 @@ public class QuotaService
 
     public async Task EnsureCanDeployProjectAsync(Guid userId, Guid currentProjectId)
     {
+        await AcquirePlatformDeploymentLockAsync();
         await AcquireUserDeploymentLockAsync(userId);
-
-        // Enforce one active project per user.
-        // A project is active if its status or any of its services' statuses is in the following list.
-        var activeStatuses = new[]
-        {
-            "queued", "cloning", "building", "deploying", "live", "unhealthy",
-            "stopping", "deleting", "deleting_failed", "cleanup_failed"
-        };
 
         var activeProject = await _db.Projects
             .Where(p => p.UserId == userId && p.Id != currentProjectId)
-            .Where(p => activeStatuses.Contains(p.Status) || p.Services.Any(s => activeStatuses.Contains(s.Status)))
+            .Where(p => ActiveStatuses.Contains(p.Status) || p.Services.Any(s => ActiveStatuses.Contains(s.Status)))
             .FirstOrDefaultAsync();
 
         if (activeProject != null)
         {
             throw new QuotaExceededException($"Stop your running project '{activeProject.Name}' before deploying another one.");
         }
+
+        var maxActiveProjects = Math.Max(1, _configuration.GetValue("Capacity:MaxActiveProjects", 3));
+        var otherActiveProjects = await _db.Projects
+            .Where(p => p.Id != currentProjectId)
+            .CountAsync(p => ActiveStatuses.Contains(p.Status) || p.Services.Any(s => ActiveStatuses.Contains(s.Status)));
+        if (otherActiveProjects >= maxActiveProjects)
+        {
+            throw new PlatformCapacityException("The execution node is currently at capacity. Stop a running project or retry later.");
+        }
+
+        var maxQueuedDeployments = Math.Max(1, _configuration.GetValue("Capacity:MaxQueuedDeployments", 10));
+        var queuedDeployments = await _db.ProjectDeployments.CountAsync(d => d.Status == "queued")
+            + await _db.Deployments.CountAsync(d => d.Status == "queued");
+        if (queuedDeployments >= maxQueuedDeployments)
+        {
+            throw new PlatformCapacityException("The deployment queue is currently full. Retry after an existing build starts.");
+        }
+    }
+
+    public async Task<RuntimeCapacityResponse> GetRuntimeCapacityAsync()
+    {
+        var maxActiveProjects = Math.Max(1, _configuration.GetValue("Capacity:MaxActiveProjects", 3));
+        var maxQueuedDeployments = Math.Max(1, _configuration.GetValue("Capacity:MaxQueuedDeployments", 10));
+
+        var activeProjects = await _db.Projects
+            .CountAsync(p => ActiveStatuses.Contains(p.Status) || p.Services.Any(s => ActiveStatuses.Contains(s.Status)));
+        var queuedDeployments = await _db.ProjectDeployments.CountAsync(d => d.Status == "queued")
+            + await _db.Deployments.CountAsync(d => d.Status == "queued");
+
+        var canAcceptDeployment = activeProjects < maxActiveProjects && queuedDeployments < maxQueuedDeployments;
+        return new RuntimeCapacityResponse(
+            canAcceptDeployment,
+            canAcceptDeployment ? "available" : "busy",
+            canAcceptDeployment ? 0 : 60);
+    }
+
+    private async Task AcquirePlatformDeploymentLockAsync()
+    {
+        if (_db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) != true)
+            return;
+
+        await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(2, 1)");
     }
 
     private async Task AcquireUserDeploymentLockAsync(Guid userId)

@@ -54,6 +54,10 @@ public class ServicesController : ControllerBase
         {
             return Conflict(new { message = ex.Message });
         }
+        catch (RuntimeModeUnavailableException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpGet("api/services/{id:guid}")]

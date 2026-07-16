@@ -10,10 +10,12 @@ public class ProjectEventService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly AppDbContext _db;
+    private readonly CorrelationContext _correlation;
 
-    public ProjectEventService(AppDbContext db)
+    public ProjectEventService(AppDbContext db, CorrelationContext correlation)
     {
         _db = db;
+        _correlation = correlation;
     }
 
     public async Task AddAsync(
@@ -26,6 +28,10 @@ public class ProjectEventService
         Guid? routeTargetId = null,
         Dictionary<string, string>? metadata = null)
     {
+        var safeMetadata = metadata is null ? [] : new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(_correlation.Id))
+            safeMetadata["correlationId"] = _correlation.Id;
+
         _db.ProjectEvents.Add(new ProjectEvent
         {
             ProjectId = projectId,
@@ -35,7 +41,7 @@ public class ProjectEventService
             Type = type,
             Severity = severity,
             Message = message,
-            MetadataJson = metadata is null || metadata.Count == 0 ? null : JsonSerializer.Serialize(metadata, JsonOptions),
+            MetadataJson = safeMetadata.Count == 0 ? null : JsonSerializer.Serialize(safeMetadata, JsonOptions),
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();

@@ -91,7 +91,8 @@ public class ProjectService
         {
             UserId = userId,
             Name = request.Name,
-            Description = request.Description
+            Description = request.Description,
+            DeploymentMode = IsComposeOnlyRuntime() ? "compose" : "services"
         };
 
         _db.Projects.Add(project);
@@ -101,6 +102,8 @@ public class ProjectService
             project.Id, project.Name, project.Description, project.Status, project.DeploymentMode,
             0, project.CreatedAt, project.UpdatedAt);
     }
+
+    private bool IsComposeOnlyRuntime() => _configuration.GetValue("Runtime:ComposeOnly", false);
 
     public async Task<ComposeInspectResponse> InspectComposeAsync(Guid projectId, Guid userId, ComposeInspectRequest request)
     {
@@ -130,7 +133,7 @@ public class ProjectService
                 service.Name,
                 SuggestRouteSlug(service.Name),
                 SuggestRoutePort(service.Name, service.Ports),
-                TraefikExposure,
+                DefaultExposureProvider(),
                 null,
                 null
             ))
@@ -430,7 +433,7 @@ public class ProjectService
             throw new QuotaExceededException("Runtime cleanup must complete before this project can be changed or deployed.");
     }
 
-    private static List<ComposeRouteResponse> NormalizeRoutes(List<ComposeRouteRequest> routes)
+    private List<ComposeRouteResponse> NormalizeRoutes(List<ComposeRouteRequest> routes)
     {
         if (routes.Count == 0)
             return [];
@@ -446,10 +449,12 @@ public class ProjectService
             if (route.InternalPort is < 1 or > 65535)
                 throw new ArgumentException($"Invalid internal port for route '{routeSlug}'.");
             var exposureProvider = string.IsNullOrWhiteSpace(route.ExposureProvider)
-                ? TraefikExposure
+                ? DefaultExposureProvider()
                 : route.ExposureProvider.Trim().ToLowerInvariant();
             if (!ComposeExposureProviders.Contains(exposureProvider))
                 throw new ArgumentException($"Unsupported exposure provider for route '{routeSlug}': {route.ExposureProvider}");
+            if (RequireHttpsUserRoutes() && exposureProvider != CloudflareQuickExposure)
+                throw new ArgumentException("The invite-only pilot only supports HTTPS Cloudflare preview routes.");
             return new ComposeRouteResponse(serviceName, routeSlug, route.InternalPort, exposureProvider, route.HealthPath, null);
         }).ToList();
 
@@ -461,6 +466,14 @@ public class ProjectService
 
         return normalized;
     }
+
+    private string DefaultExposureProvider() =>
+        _configuration["Runtime:DefaultExposureProvider"]?.Trim().ToLowerInvariant() is { } configured
+            && ComposeExposureProviders.Contains(configured)
+            ? configured
+            : CloudflareQuickExposure;
+
+    private bool RequireHttpsUserRoutes() => _configuration.GetValue("Runtime:RequireHttpsUserRoutes", false);
 
     private List<ComposeEnvVarResponse> NormalizeEnvVars(List<ComposeEnvVarRequest> envVars, string? previousJson)
     {
