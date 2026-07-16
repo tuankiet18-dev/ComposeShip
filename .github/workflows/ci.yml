@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./backend/OneClickHost.Api
+        working-directory: ./backend/ComposeShip.Api
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run backend console tests
-        run: dotnet run --project ../OneClickHost.Api.Tests/OneClickHost.Api.Tests.csproj --configuration Release
+        run: dotnet run --project ../ComposeShip.Api.Tests/ComposeShip.Api.Tests.csproj --configuration Release
 
       - name: Report NuGet dependency audit
         run: dotnet list package --vulnerable --include-transitive
