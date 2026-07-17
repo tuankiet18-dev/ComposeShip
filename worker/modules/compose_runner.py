@@ -75,6 +75,8 @@ INFRA_SERVICE_HINTS = (
     "database",
 )
 POSTGRES_CAPABILITIES = ["CHOWN", "FOWNER", "SETUID", "SETGID", "DAC_OVERRIDE", "NET_BIND_SERVICE"]
+NGINX_CAPABILITIES = ["CHOWN", "NET_BIND_SERVICE"]
+NGINX_SERVICE_NAMES = {"frontend", "web", "nginx", "proxy", "reverse-proxy"}
 
 
 def _client():
@@ -378,6 +380,13 @@ def _platform_capabilities(service_name: str, service: dict[str, Any]) -> list[s
     # initialization; every other user service keeps the one-cap baseline.
     if "postgres" in identity:
         return POSTGRES_CAPABILITIES
+    # The official nginx entrypoint starts as root and changes ownership of
+    # its cache directories before dropping privileges. Keep that ability
+    # scoped to conventional frontend/proxy services (or an explicit nginx
+    # image), while retaining the platform's default least-privilege profile
+    # for application services.
+    if "nginx" in identity or service_name.lower() in NGINX_SERVICE_NAMES:
+        return NGINX_CAPABILITIES
     return ["NET_BIND_SERVICE"]
 
 

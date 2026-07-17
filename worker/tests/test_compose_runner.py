@@ -239,6 +239,28 @@ def test_prepare_compose_exposes_only_routed_services_for_execution_node(tmp_pat
     assert sanitized["services"]["api"]["security_opt"] == ["no-new-privileges:true"]
 
 
+def test_prepare_compose_allows_nginx_frontend_entrypoint_setup(tmp_path):
+    compose_file = _write_compose(
+        tmp_path,
+        {"services": {"frontend": {"image": "nginx:1.29-alpine"}}},
+    )
+
+    sanitized_file, _ = prepare_compose_file(
+        compose_file,
+        str(tmp_path),
+        "project-1",
+        "deployment-1",
+        "oc-project",
+        [],
+        [],
+    )
+
+    with open(sanitized_file, encoding="utf-8") as f:
+        sanitized = yaml.safe_load(f)
+    assert sanitized["services"]["frontend"]["cap_drop"] == ["ALL"]
+    assert sanitized["services"]["frontend"]["cap_add"] == ["CHOWN", "NET_BIND_SERVICE"]
+
+
 def test_prepare_compose_injects_matching_non_secret_build_args(tmp_path):
     compose_file = _write_compose(
         tmp_path,
