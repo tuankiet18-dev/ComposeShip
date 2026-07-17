@@ -105,14 +105,14 @@ cat > traefik/dynamic/dashboard.yml <<ROUTEEOF
 http:
   routers:
     api-router:
-      rule: "Host(\`$DOMAIN_NAME\`) && Headers(\`X-ComposeShip-Origin\`, \`${cloudfront_origin_secret}\`) && (PathPrefix(\`/api\`) || Path(\`/health\`))"
+      rule: "Host(\`$DOMAIN_NAME\`) && Header(\`X-ComposeShip-Origin\`, \`${cloudfront_origin_secret}\`) && (PathPrefix(\`/api\`) || Path(\`/health\`))"
       service: api-service
       entryPoints:
         - web
       priority: 100
 
     frontend-router:
-      rule: "Host(\`$DOMAIN_NAME\`) && Headers(\`X-ComposeShip-Origin\`, \`${cloudfront_origin_secret}\`)"
+      rule: "Host(\`$DOMAIN_NAME\`) && Header(\`X-ComposeShip-Origin\`, \`${cloudfront_origin_secret}\`)"
       service: frontend-service
       entryPoints:
         - web
