@@ -134,12 +134,31 @@ public class ExecutionNodeService
         if (node.Status != "active")
         {
             await _db.SaveChangesAsync();
-            return new LeaseResponse(false, null, null, null);
+            return new LeaseResponse(false, null, null, null, null);
+        }
+
+        // Cleanup must be handled by the node which owns the local Docker stack.
+        // It deliberately does not consume a build slot, so a stop can always
+        // free capacity even when the node reports itself full.
+        var stoppingProject = await _db.Projects
+            .Where(p => p.DeploymentMode == "compose" && p.Status == "stopping" && p.ComposeProjectName != null)
+            .Where(p => p.ProjectDeployments.Any(d => d.LockedByNodeId == node.Id))
+            .OrderBy(p => p.UpdatedAt)
+            .FirstOrDefaultAsync();
+        if (stoppingProject is not null)
+        {
+            await _db.SaveChangesAsync();
+            return new LeaseResponse(
+                true,
+                "stop",
+                null,
+                null,
+                new StopLeasePayload(stoppingProject.Id, stoppingProject.Name, stoppingProject.ComposeProjectName!));
         }
 
         var availableSlots = Math.Min(Math.Max(0, request.AvailableSlots), Math.Max(0, node.MaxConcurrentBuilds - node.CurrentBuilds));
         if (availableSlots <= 0)
-            return new LeaseResponse(false, null, null, null);
+            return new LeaseResponse(false, null, null, null, null);
 
         var now = DateTime.UtcNow;
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -163,7 +182,7 @@ public class ExecutionNodeService
             {
                 await MarkDeploymentLeasePreparationFailedAsync(composeDeployment, node, now, ex);
                 await transaction.CommitAsync();
-                return new LeaseResponse(false, null, null, null);
+                return new LeaseResponse(false, null, null, null, null);
             }
 
             composeDeployment.Status = "cloning";
@@ -203,11 +222,45 @@ public class ExecutionNodeService
                 ReadRoutes(project.ComposeRoutesJson),
                 environmentVariables,
                 project.ComposePostStartCommands
-            ), null);
+            ), null, null);
         }
 
         await transaction.CommitAsync();
-        return new LeaseResponse(false, null, null, null);
+        return new LeaseResponse(false, null, null, null, null);
+    }
+
+    public async Task CompleteStopAsync(ExecutionNode node, CompleteStopRequest request)
+    {
+        var project = await _db.Projects
+            .Include(p => p.RouteTargets)
+            .FirstOrDefaultAsync(p => p.Id == request.ProjectId
+                && p.DeploymentMode == "compose"
+                && p.ProjectDeployments.Any(d => d.LockedByNodeId == node.Id))
+            ?? throw new KeyNotFoundException("Project stop lease not found.");
+
+        var now = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(request.ErrorMessage))
+        {
+            project.Status = "cleanup_failed";
+            project.UpdatedAt = now;
+            await _events.AddAsync(project.Id, "stop.failed", "error", request.ErrorMessage, executionNodeId: node.Id);
+            await _db.SaveChangesAsync();
+            return;
+        }
+
+        if (project.Status == "stopping")
+        {
+            project.Status = "stopped";
+            project.ComposeLiveUrlsJson = null;
+            project.UpdatedAt = now;
+            foreach (var route in project.RouteTargets.Where(r => r.Status == "active"))
+            {
+                route.Status = "inactive";
+                route.UpdatedAt = now;
+            }
+            await _events.AddAsync(project.Id, "stop.completed", "info", "Compose stack stopped and runtime capacity released.", executionNodeId: node.Id);
+        }
+        await _db.SaveChangesAsync();
     }
 
     private async Task MarkDeploymentLeasePreparationFailedAsync(

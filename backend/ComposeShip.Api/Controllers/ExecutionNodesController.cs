@@ -99,6 +99,25 @@ public class ExecutionNodesController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/stops/complete")]
+    public async Task<IActionResult> CompleteStop(Guid id, [FromBody] CompleteStopRequest request)
+    {
+        try
+        {
+            var node = await _executionNodeService.AuthenticateAsync(id, Request.Headers[NodeTokenHeader].FirstOrDefault());
+            await _executionNodeService.CompleteStopAsync(node, request);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project stop lease not found for this execution node." });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { message = "Invalid execution node token." });
+        }
+    }
+
     [HttpGet("{id:guid}/cleanup-inventory")]
     public async Task<ActionResult<CleanupInventoryResponse>> GetCleanupInventory(Guid id)
     {

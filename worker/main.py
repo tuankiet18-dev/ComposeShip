@@ -738,6 +738,19 @@ def run_executor_loop():
             lease = client.lease(current_builds=0, status="active")
             if lease.get("hasWork") and lease.get("kind") == "compose":
                 process_project_deployment_lease(client, lease["compose"])
+            elif lease.get("hasWork") and lease.get("kind") == "stop":
+                stop = lease["stop"]
+                project_id = stop["projectId"]
+                compose_project_name = stop["composeProjectName"]
+                logger.info("Stopping leased Compose project %s (%s)", stop["projectName"], compose_project_name)
+                try:
+                    # Stop preserves named volumes; deletion is a distinct explicit action.
+                    cleanup_compose_stack(compose_project_name, remove_volumes=False)
+                    client.complete_stop(project_id)
+                    logger.info("Compose project %s stopped", project_id)
+                except Exception as exc:
+                    logger.exception("Failed to stop Compose project %s", project_id)
+                    client.complete_stop(project_id, str(exc))
             elif lease.get("hasWork"):
                 logger.warning("Service deployment leases are reserved for a later executor implementation.")
                 service = lease.get("service") or {}

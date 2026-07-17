@@ -102,5 +102,13 @@ class ExecutionNodeClient:
     def route_target(self, body: dict):
         return self._request("POST", f"/execution-nodes/{self.node_id}/route-targets", body)
 
+    def complete_stop(self, project_id: str, error_message: str | None = None):
+        return self._request(
+            "POST",
+            f"/execution-nodes/{self.node_id}/stops/complete",
+            {"projectId": project_id, "errorMessage": error_message},
+            correlation_id=project_id,
+        )
+
     def cleanup_inventory(self) -> dict:
         return self._request("GET", f"/execution-nodes/{self.node_id}/cleanup-inventory")

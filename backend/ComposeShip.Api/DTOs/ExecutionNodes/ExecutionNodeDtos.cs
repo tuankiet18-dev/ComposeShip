@@ -41,7 +41,8 @@ public record LeaseResponse(
     bool HasWork,
     string? Kind,
     ComposeLeasePayload? Compose,
-    ServiceLeasePayload? Service
+    ServiceLeasePayload? Service,
+    StopLeasePayload? Stop
 );
 
 public record ComposeLeasePayload(
@@ -71,6 +72,19 @@ public record ServiceLeasePayload(
     string? NetworkAliases,
     Dictionary<string, string> EnvironmentVariables,
     int Version
+);
+
+// Cleanup is leased to the node that owns the running Compose stack. The node
+// can stop containers locally, but it cannot mutate control-plane state directly.
+public record StopLeasePayload(
+    Guid ProjectId,
+    string ProjectName,
+    string ComposeProjectName
+);
+
+public record CompleteStopRequest(
+    Guid ProjectId,
+    string? ErrorMessage
 );
 
 public record DeploymentEventRequest(
