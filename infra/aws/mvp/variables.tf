@@ -88,6 +88,17 @@ variable "execution_node_root_volume_size_gb" {
   default     = 40
 }
 
+variable "execution_node_swap_size_mib" {
+  description = "Swap file size for the execution node. Set to 0 to disable swap."
+  type        = number
+  default     = 2048
+
+  validation {
+    condition     = var.execution_node_swap_size_mib >= 0 && var.execution_node_swap_size_mib <= 8192
+    error_message = "execution_node_swap_size_mib must be between 0 and 8192 MiB."
+  }
+}
+
 variable "postgres_db" {
   description = "PostgreSQL database name for the container database."
   type        = string

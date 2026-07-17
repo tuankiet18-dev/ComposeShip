@@ -28,6 +28,25 @@ log "Installing base packages"
 apt-get update
 apt-get install -y awscli ca-certificates curl gnupg git openssl
 
+SWAP_SIZE_MIB="${execution_node_swap_size_mib}"
+if (( SWAP_SIZE_MIB > 0 )); then
+  swap_file="/swapfile"
+  log "Configuring $SWAP_SIZE_MIB MiB swap file"
+  if [[ ! -f "$swap_file" ]]; then
+    fallocate -l "$${SWAP_SIZE_MIB}M" "$swap_file"
+    chmod 0600 "$swap_file"
+    mkswap "$swap_file"
+  fi
+  if ! swapon --show=NAME --noheadings | grep -Fxq "$swap_file"; then
+    swapon "$swap_file"
+  fi
+  grep -qE '^/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  cat > /etc/sysctl.d/99-composeship-swap.conf <<'EOF'
+vm.swappiness=10
+EOF
+  sysctl --system
+fi
+
 log "Installing Docker Engine and Compose plugin"
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg

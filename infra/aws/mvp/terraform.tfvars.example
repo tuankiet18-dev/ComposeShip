@@ -21,6 +21,9 @@ execution_node_desired_capacity = 1
 execution_node_max_size = 2
 control_plane_root_volume_size_gb = 20
 execution_node_root_volume_size_gb = 40
+# 2 GiB of swap protects the 2 GiB t4g.small execution node from transient
+# Docker build memory spikes. Set to 0 to disable it.
+execution_node_swap_size_mib = 2048
 
 # Optional. Leave empty to let Terraform generate random values.
 postgres_password = ""

@@ -388,6 +388,7 @@ resource "aws_launch_template" "execution_node" {
     container_memory_limit            = var.container_memory_limit
     container_cpu_limit               = var.container_cpu_limit
     container_pids_limit              = var.container_pids_limit
+    execution_node_swap_size_mib      = var.execution_node_swap_size_mib
   }))
 
   block_device_mappings {
