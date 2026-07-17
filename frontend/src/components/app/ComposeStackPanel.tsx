@@ -178,8 +178,8 @@ export function ComposeStackPanel({
     setSubfolder("");
     setComposeFile("docker-compose.yml");
     setRoutes([
-      { serviceName: "frontend", routeSlug: "app", internalPort: 3000, exposureProvider: "traefik", healthPath: "/" },
-      { serviceName: "api", routeSlug: "api", internalPort: 8000, exposureProvider: "traefik", healthPath: "/health" },
+      { serviceName: "frontend", routeSlug: "app", internalPort: 3000, exposureProvider: "cloudflare_quick", healthPath: "/" },
+      { serviceName: "api", routeSlug: "api", internalPort: 8000, exposureProvider: "cloudflare_quick", healthPath: "/health" },
     ]);
     setEnvVars([]);
     toast.success("Fixture configuration filled");
@@ -396,7 +396,7 @@ export function ComposeStackPanel({
                               if (isPublic) {
                                 setRoutes(items => items.filter(r => r.serviceName !== service.name));
                               } else {
-                                setRoutes(items => [...items, { serviceName: service.name, routeSlug: service.name, internalPort: service.ports[0] || 3000, exposureProvider: "traefik" }]);
+                                setRoutes(items => [...items, { serviceName: service.name, routeSlug: service.name, internalPort: service.ports[0] || 3000, exposureProvider: "cloudflare_quick" }]);
                               }
                             }}
                           >
