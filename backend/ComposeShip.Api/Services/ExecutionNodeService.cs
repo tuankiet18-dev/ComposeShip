@@ -370,6 +370,12 @@ public class ExecutionNodeService
         deployment.Project.UpdatedAt = now;
         node.UpdatedAt = now;
         await _db.SaveChangesAsync();
+
+        // Finalize the runtime state with a database-side conditional update.
+        // A separate lease/request may have loaded a stale Project entity; only
+        // the latest deployment is allowed to win after all event writes finish.
+        if (request.Status is "live" or "failed")
+            await SetProjectRuntimeStatusIfLatestAsync(deployment, request.Status);
     }
 
     public async Task<RouteTargetResponse> UpsertRouteTargetAsync(ExecutionNode node, UpsertRouteTargetRequest request)
@@ -552,6 +558,18 @@ public class ExecutionNodeService
         return _db.ProjectDeployments
             .Where(candidate => candidate.ProjectId == deployment.ProjectId)
             .AllAsync(candidate => candidate.Version <= deployment.Version);
+    }
+
+    private Task<int> SetProjectRuntimeStatusIfLatestAsync(ProjectDeployment deployment, string status)
+    {
+        var now = DateTime.UtcNow;
+        return _db.Projects
+            .Where(project => project.Id == deployment.ProjectId)
+            .Where(project => !_db.ProjectDeployments.Any(candidate =>
+                candidate.ProjectId == project.Id && candidate.Version > deployment.Version))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(project => project.Status, status)
+                .SetProperty(project => project.UpdatedAt, now));
     }
 
     private void WriteTraefikRoute(RouteTarget target)
