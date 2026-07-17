@@ -72,30 +72,52 @@ resource "aws_cloudfront_cache_policy" "api" {
   min_ttl     = 0
 
   parameters_in_cache_key_and_forwarded_to_origin {
-    enable_accept_encoding_brotli = true
-    enable_accept_encoding_gzip   = true
+    # A disabled cache policy must use an empty cache key. API request values
+    # are forwarded by the origin request policy below instead.
+    enable_accept_encoding_brotli = false
+    enable_accept_encoding_gzip   = false
 
     cookies_config {
-      cookie_behavior = "all"
+      cookie_behavior = "none"
     }
 
     headers_config {
-      header_behavior = "whitelist"
-      headers {
-        items = [
-          "Accept",
-          "Authorization",
-          "Content-Type",
-          "Origin",
-          "Access-Control-Request-Headers",
-          "Access-Control-Request-Method",
-        ]
-      }
+      header_behavior = "none"
     }
 
     query_strings_config {
-      query_string_behavior = "all"
+      query_string_behavior = "none"
     }
+  }
+}
+
+resource "aws_cloudfront_origin_request_policy" "api" {
+  name    = "${var.project_name}-api-origin-requests"
+  comment = "Forward viewer API requests to the control plane without caching them"
+
+  cookies_config {
+    cookie_behavior = "all"
+  }
+
+  headers_config {
+    # Preserve authentication and CORS preflight headers without forwarding
+    # the viewer Host header (CloudFront supplies the origin Host header).
+    header_behavior = "whitelist"
+
+    headers {
+      items = [
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "Origin",
+        "Access-Control-Request-Headers",
+        "Access-Control-Request-Method",
+      ]
+    }
+  }
+
+  query_strings_config {
+    query_string_behavior = "all"
   }
 }
 
@@ -175,6 +197,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     cached_methods             = ["GET", "HEAD", "OPTIONS"]
     compress                   = true
     cache_policy_id            = aws_cloudfront_cache_policy.api.id
+    origin_request_policy_id   = aws_cloudfront_origin_request_policy.api.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 
