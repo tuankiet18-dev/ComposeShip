@@ -95,11 +95,12 @@ export function ComposeStackPanel({
     && inspectedCurrentFile
     && Boolean(inspectResult?.isDeployable);
   const savedConfigReady = Boolean(config?.repoUrl && config.routes.length > 0);
+  const currentRuntimeStopped = project.status.toLowerCase() === "stopped";
   const workflowSteps = [
     { label: "Source", detail: repoUrl ? "Repo selected" : "Add repo", state: repoUrl ? "done" : "current" },
     { label: "Routes", detail: routes.length ? `${routes.length} public` : "Add route", state: routes.length ? "done" : repoUrl ? "current" : "pending" },
     { label: "Save", detail: savedConfigReady ? "Ready" : "Persist config", state: savedConfigReady ? "done" : canSave ? "current" : "pending" },
-    { label: "Deploy", detail: latestDeployment ? latestDeployment.status : "Queue stack", state: latestDeployment ? "done" : savedConfigReady ? "current" : "pending" },
+    { label: "Deploy", detail: currentRuntimeStopped ? "Stopped" : latestDeployment ? latestDeployment.status : "Queue stack", state: latestDeployment ? "done" : savedConfigReady ? "current" : "pending" },
   ] as const;
 
   const inspectCompose = async () => {
@@ -509,7 +510,7 @@ export function ComposeStackPanel({
             <CheckCircle2 className="h-4 w-4 text-primary" />
             Deploy and routing status
           </CardTitle>
-          <CardDescription>Track node assignment, failure category, route targets, and live URLs for the latest stack deploy.</CardDescription>
+          <CardDescription>Current runtime state, with context from the most recent stack deployment.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -525,13 +526,15 @@ export function ComposeStackPanel({
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <div className="rounded-md border p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={latestDeployment.status} />
+                  <StatusBadge status={project.status} />
+                  <span className="text-xs text-muted-foreground">Current runtime</span>
                   <span className="rounded bg-muted px-2 py-1 font-mono text-xs">v{latestDeployment.version}</span>
                   <span className="text-xs text-muted-foreground">{formatRelativeTime(latestDeployment.createdAt)}</span>
                 </div>
                 <Separator className="my-4" />
                 <dl className="grid gap-3 text-sm">
                   <StatusLine label="Compose project" value={latestDeployment.composeProjectName || "pending"} />
+                  <StatusLine label="Latest deployment outcome" value={latestDeployment.status} muted={currentRuntimeStopped} />
                   <StatusLine label="Execution node" value={latestDeployment.executionNodeName || "not assigned"} />
                   <StatusLine label="Failure category" value={latestDeployment.failureCategory || "none"} muted={!latestDeployment.failureCategory} />
                 </dl>
