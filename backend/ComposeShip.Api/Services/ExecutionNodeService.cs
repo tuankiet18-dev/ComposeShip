@@ -279,7 +279,8 @@ public class ExecutionNodeService
         deployment.HeartbeatAt = now;
         deployment.LockedByNodeId = null;
         deployment.LockedAt = null;
-        deployment.Project.Status = "failed";
+        if (await IsLatestProjectDeploymentAsync(deployment))
+            deployment.Project.Status = "failed";
         deployment.Project.UpdatedAt = now;
         node.CurrentBuilds = Math.Max(0, node.CurrentBuilds);
         node.UpdatedAt = now;
@@ -326,9 +327,12 @@ public class ExecutionNodeService
 
         if (request.Status == "live")
         {
-            deployment.Project.Status = "live";
-            deployment.Project.ComposeLiveUrlsJson = deployment.PublicUrlsJson;
-            await SupersedePreviousProjectDeploymentsAsync(deployment.ProjectId, deployment.Id);
+            if (await IsLatestProjectDeploymentAsync(deployment))
+            {
+                deployment.Project.Status = "live";
+                deployment.Project.ComposeLiveUrlsJson = deployment.PublicUrlsJson;
+                await SupersedePreviousProjectDeploymentsAsync(deployment.ProjectId, deployment.Id);
+            }
             await _events.AddAsync(
                 deployment.ProjectId,
                 "redeploy.succeeded",
@@ -344,7 +348,10 @@ public class ExecutionNodeService
         }
         else if (request.Status == "failed")
         {
-            deployment.Project.Status = "failed";
+            // A delayed event from an older lease is historical information;
+            // it must never overwrite the runtime state of a newer deployment.
+            if (await IsLatestProjectDeploymentAsync(deployment))
+                deployment.Project.Status = "failed";
             await _events.AddAsync(
                 deployment.ProjectId,
                 "redeploy.failed",
@@ -506,7 +513,11 @@ public class ExecutionNodeService
                 deployment.ErrorMessage ??= "Deployment did not start cleanly after multiple lease attempts. Check control-plane API logs and project configuration.";
                 deployment.BuildLogs = TruncateLog(string.IsNullOrWhiteSpace(deployment.BuildLogs) ? deployment.ErrorMessage : deployment.BuildLogs);
                 deployment.CompletedAt ??= DateTime.UtcNow;
-                deployment.Project.Status = "failed";
+                // Old leases can expire after a newer deployment is already
+                // live. Keep the failure on that deployment record, but do not
+                // corrupt the project's current runtime state.
+                if (await IsLatestProjectDeploymentAsync(deployment))
+                    deployment.Project.Status = "failed";
                 _db.ProjectEvents.Add(new ProjectEvent
                 {
                     ProjectId = deployment.ProjectId,
@@ -534,6 +545,13 @@ public class ExecutionNodeService
         await _db.ProjectDeployments
             .Where(d => d.ProjectId == projectId && d.Id != currentDeploymentId && d.Status == "live")
             .ExecuteUpdateAsync(setters => setters.SetProperty(d => d.Status, "superseded"));
+    }
+
+    private Task<bool> IsLatestProjectDeploymentAsync(ProjectDeployment deployment)
+    {
+        return _db.ProjectDeployments
+            .Where(candidate => candidate.ProjectId == deployment.ProjectId)
+            .AllAsync(candidate => candidate.Version <= deployment.Version);
     }
 
     private void WriteTraefikRoute(RouteTarget target)
