@@ -16,7 +16,14 @@ log() {
 
 log "Installing base packages"
 apt-get update
-apt-get install -y awscli ca-certificates curl gnupg git iptables-persistent openssl
+apt-get install -y ca-certificates curl gnupg git iptables-persistent openssl unzip
+
+log "Installing AWS CLI v2"
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip
+rm -rf /tmp/aws
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install --update
+rm -rf /tmp/aws /tmp/awscliv2.zip
 
 log "Installing Docker Engine and Compose plugin"
 install -m 0755 -d /etc/apt/keyrings
