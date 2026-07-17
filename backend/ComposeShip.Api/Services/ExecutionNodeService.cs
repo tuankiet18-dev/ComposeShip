@@ -18,6 +18,11 @@ public class ExecutionNodeService
         "stopping", "deleting", "deleting_failed", "cleanup_failed"
     ];
 
+    private static readonly string[] LeaseInProgressStatuses =
+    [
+        "cloning", "building", "deploying"
+    ];
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly Regex SafeFileName = new("[^a-zA-Z0-9.-]+", RegexOptions.Compiled);
     private readonly AppDbContext _db;
@@ -500,7 +505,9 @@ public class ExecutionNodeService
         var maxRetries = MaxRetries();
         var expired = await _db.ProjectDeployments
             .Include(d => d.Project)
-            .Where(d => d.LockedByNodeId != null && d.Status != "live" && d.Status != "failed" && d.HeartbeatAt < cutoff)
+            // `superseded` is a completed historical deployment. It keeps its
+            // node association for inventory, but must never be leased again.
+            .Where(d => d.LockedByNodeId != null && LeaseInProgressStatuses.Contains(d.Status) && d.HeartbeatAt < cutoff)
             .ToListAsync();
 
         foreach (var deployment in expired)
