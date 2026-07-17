@@ -186,6 +186,17 @@ resource "aws_security_group" "control_plane" {
     cidr_blocks = [local.private_cidr]
   }
 
+  # The control plane is also the deliberately low-cost NAT instance for the
+  # private execution subnet. AWS evaluates this traffic against the ENI's
+  # inbound security group before Linux can forward and masquerade it.
+  ingress {
+    description = "Private execution subnet outbound traffic through NAT"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [local.private_cidr]
+  }
+
   egress {
     description = "Outbound internet and private VPC access"
     from_port   = 0
