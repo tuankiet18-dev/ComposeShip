@@ -258,7 +258,7 @@ def test_prepare_compose_allows_nginx_frontend_entrypoint_setup(tmp_path):
     with open(sanitized_file, encoding="utf-8") as f:
         sanitized = yaml.safe_load(f)
     assert sanitized["services"]["frontend"]["cap_drop"] == ["ALL"]
-    assert sanitized["services"]["frontend"]["cap_add"] == ["CHOWN", "NET_BIND_SERVICE"]
+    assert sanitized["services"]["frontend"]["cap_add"] == ["CHOWN", "SETUID", "SETGID", "NET_BIND_SERVICE"]
 
 
 def test_prepare_compose_injects_matching_non_secret_build_args(tmp_path):
