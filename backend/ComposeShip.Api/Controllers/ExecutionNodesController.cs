@@ -118,6 +118,25 @@ public class ExecutionNodesController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/deletes/complete")]
+    public async Task<IActionResult> CompleteDelete(Guid id, [FromBody] CompleteDeleteRequest request)
+    {
+        try
+        {
+            var node = await _executionNodeService.AuthenticateAsync(id, Request.Headers[NodeTokenHeader].FirstOrDefault());
+            await _executionNodeService.CompleteDeleteAsync(node, request);
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Project delete lease not found for this execution node." });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { message = "Invalid execution node token." });
+        }
+    }
+
     [HttpGet("{id:guid}/cleanup-inventory")]
     public async Task<ActionResult<CleanupInventoryResponse>> GetCleanupInventory(Guid id)
     {

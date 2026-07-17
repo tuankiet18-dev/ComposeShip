@@ -42,7 +42,8 @@ public record LeaseResponse(
     string? Kind,
     ComposeLeasePayload? Compose,
     ServiceLeasePayload? Service,
-    StopLeasePayload? Stop
+    StopLeasePayload? Stop,
+    DeleteLeasePayload? Delete
 );
 
 public record ComposeLeasePayload(
@@ -83,6 +84,20 @@ public record StopLeasePayload(
 );
 
 public record CompleteStopRequest(
+    Guid ProjectId,
+    string? ErrorMessage
+);
+
+// Delete is distinct from stop: it removes the stack's project-scoped named
+// volumes after the execution node has removed its local Docker resources.
+public record DeleteLeasePayload(
+    Guid ProjectId,
+    string ProjectName,
+    string ComposeProjectName,
+    bool RemoveVolumes
+);
+
+public record CompleteDeleteRequest(
     Guid ProjectId,
     string? ErrorMessage
 );

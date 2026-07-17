@@ -738,6 +738,24 @@ def run_executor_loop():
             lease = client.lease(current_builds=0, status="active")
             if lease.get("hasWork") and lease.get("kind") == "compose":
                 process_project_deployment_lease(client, lease["compose"])
+            elif lease.get("hasWork") and lease.get("kind") == "delete":
+                delete = lease["delete"]
+                project_id = delete["projectId"]
+                compose_project_name = delete["composeProjectName"]
+                remove_volumes = bool(delete.get("removeVolumes", True))
+                logger.warning(
+                    "Deleting leased Compose project %s (%s, remove_volumes=%s)",
+                    delete["projectName"],
+                    compose_project_name,
+                    remove_volumes,
+                )
+                try:
+                    cleanup_compose_stack(compose_project_name, remove_volumes=remove_volumes)
+                    client.complete_delete(project_id)
+                    logger.warning("Compose project %s permanently deleted", project_id)
+                except Exception as exc:
+                    logger.exception("Failed to delete Compose project %s", project_id)
+                    client.complete_delete(project_id, str(exc))
             elif lease.get("hasWork") and lease.get("kind") == "stop":
                 stop = lease["stop"]
                 project_id = stop["projectId"]
